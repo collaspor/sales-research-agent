@@ -537,7 +537,7 @@ git commit -m "feat: enforce deterministic citation gate"
 - Create: `tests/unit/test_deepseek_provider.py`
 - Create: `tests/fakes.py`
 
-- [ ] **Step 1: 写 Provider 契约失败测试**
+- [x] **Step 1: 写 Provider 契约失败测试**
 
 ```python
 @pytest.mark.asyncio
@@ -556,18 +556,18 @@ async def test_deepseek_retries_one_empty_json_response() -> None:
     assert provider.call_count == 2
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 Run: `uv run pytest tests/unit/test_tavily_provider.py tests/unit/test_deepseek_provider.py -q`
 Expected: FAIL，Provider 类型不存在。
 
-- [ ] **Step 3: 实现 ports**
+- [x] **Step 3: 实现 ports**
 
 `SearchProvider` 暴露 `search(query, max_results) -> list[SearchResult]`。`ResearchModel` 暴露 `plan`、`extract_evidence`、`synthesize_claims`、`verify_support`。所有返回值为 Pydantic 模型，不把 SDK/HTTP 原始对象泄露给 Graph。
 
 `tests/fakes.py` 提供 `FixtureTransport`、`SequenceChatModel`、`FakeSearchProvider`、`FakeResearchModel` 和 `FakeFetcher`。Fake 按显式队列返回结果，并记录调用参数；不得根据生产实现内部细节生成结果。
 
-- [ ] **Step 4: 实现 Tavily HTTP adapter**
+- [x] **Step 4: 实现 Tavily HTTP adapter**
 
 使用注入的 `httpx.AsyncClient` POST `https://api.tavily.com/search`，请求固定：
 
@@ -583,11 +583,11 @@ Expected: FAIL，Provider 类型不存在。
 
 把 401/403 分类为配置错误，429/5xx/timeout 分类为可重试错误，其他 4xx 分类为永久请求错误。任何异常消息不得包含 header 或 key。
 
-- [ ] **Step 5: 实现 DeepSeek adapter**
+- [x] **Step 5: 实现 DeepSeek adapter**
 
 使用 `ChatOpenAI(model=settings.deepseek_model, base_url=settings.deepseek_base_url, api_key=SecretStr(settings.deepseek_api_key))`。请求加入 JSON system instruction、具体 Schema 示例和 `response_format={"type": "json_object"}`；用目标 Pydantic 模型执行 `model_validate_json`。空内容或 Schema 错误只修正 1 次，并保存脱敏调用统计。
 
-- [ ] **Step 6: 运行测试并提交**
+- [x] **Step 6: 运行测试并提交**
 
 Run: `uv run pytest tests/unit/test_tavily_provider.py tests/unit/test_deepseek_provider.py -q`
 Expected: PASS，测试不访问公网。
