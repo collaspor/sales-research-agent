@@ -82,9 +82,9 @@ class FakeResearchModel(ResearchModel):
 
     def __init__(self) -> None:
         self.plan_responses: deque[ResearchPlan] = deque()
-        self.evidence_responses: deque[EvidenceExtraction] = deque()
-        self.claim_responses: deque[ClaimSynthesis] = deque()
-        self.verification_responses: deque[SupportVerification] = deque()
+        self.evidence_responses: deque[EvidenceExtraction | Exception] = deque()
+        self.claim_responses: deque[ClaimSynthesis | Exception] = deque()
+        self.verification_responses: deque[SupportVerification | Exception] = deque()
         self.plan_calls: list[Brief] = []
         self.evidence_calls: list[tuple[ResearchQuestion, list[DocumentBlock]]] = []
         self.claim_calls: list[tuple[Brief, list[Evidence]]] = []
@@ -93,14 +93,18 @@ class FakeResearchModel(ResearchModel):
     def queue_plan(self, response: ResearchPlan) -> None:
         self.plan_responses.append(response)
 
-    def queue_evidence(self, response: EvidenceExtraction) -> None:
+    def queue_evidence(self, response: EvidenceExtraction | Exception) -> None:
         self.evidence_responses.append(response)
 
-    def queue_claims(self, response: ClaimSynthesis) -> None:
+    def queue_claims(self, response: ClaimSynthesis | Exception) -> None:
         self.claim_responses.append(response)
 
-    def queue_verification(self, response: SupportVerification) -> None:
+    def queue_verification(self, response: SupportVerification | Exception) -> None:
         self.verification_responses.append(response)
+
+    def queue_claim(self, response: ClaimSynthesis | Exception) -> None:
+        """兼容单数命名，便于管线测试表达单次综合。"""
+        self.queue_claims(response)
 
     async def plan(self, brief: Brief) -> ResearchPlan:
         self.plan_calls.append(brief)
@@ -110,23 +114,30 @@ class FakeResearchModel(ResearchModel):
         self, question: ResearchQuestion, blocks: list[DocumentBlock]
     ) -> EvidenceExtraction:
         self.evidence_calls.append((question, blocks))
-        return self._pop(self.evidence_responses, "extract_evidence")
+        return self._pop_or_raise(self.evidence_responses, "extract_evidence")
 
     async def synthesize_claims(self, brief: Brief, evidence: list[Evidence]) -> ClaimSynthesis:
         self.claim_calls.append((brief, evidence))
-        return self._pop(self.claim_responses, "synthesize_claims")
+        return self._pop_or_raise(self.claim_responses, "synthesize_claims")
 
     async def verify_support(
         self, claim: ClaimCandidate, evidence: list[Evidence]
     ) -> SupportVerification:
         self.verification_calls.append((claim, evidence))
-        return self._pop(self.verification_responses, "verify_support")
+        return self._pop_or_raise(self.verification_responses, "verify_support")
 
     @staticmethod
     def _pop(queue: deque[QueueValue], operation: str) -> QueueValue:
         if not queue:
             raise AssertionError(f"FakeResearchModel {operation} queue is empty")
         return queue.popleft()
+
+    @classmethod
+    def _pop_or_raise(cls, queue: deque[QueueValue | Exception], operation: str) -> QueueValue:
+        response = cls._pop(queue, operation)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 class FakeFetcher:
