@@ -609,7 +609,7 @@ git commit -m "feat: add bounded search and model adapters"
 - Create: `tests/fault_injection/test_network_failures.py`
 - Modify: `tests/conftest.py`
 
-- [ ] **Step 1: 写 URL 拒绝测试**
+- [x] **Step 1: 写 URL 拒绝测试**
 
 ```python
 @pytest.mark.parametrize(
@@ -621,14 +621,14 @@ def test_url_policy_rejects_non_public_targets(url: str) -> None:
         validate_public_url(url)
 ```
 
-- [ ] **Step 2: 运行 RED，随后实现 URL 策略**
+- [x] **Step 2: 运行 RED，随后实现 URL 策略**
 
 Run: `uv run pytest tests/unit/test_url_policy.py -q`
 Expected: FAIL。
 
 实现仅允许 http/https，拒绝用户名密码、localhost 和 `ipaddress.ip_address(host)` 判定的非 global literal IP。域名解析后的每个地址也必须为 global；每次 redirect 都重新调用策略。
 
-- [ ] **Step 3: 写摄取与局部失败测试**
+- [x] **Step 3: 写摄取与局部失败测试**
 
 ```python
 @pytest.mark.asyncio
@@ -644,11 +644,11 @@ async def test_one_404_returns_failure_instead_of_raising(run_store) -> None:
     assert result.failure.code == "HTTP_404"
 ```
 
-- [ ] **Step 4: 实现 Fetcher 与 Trafilatura Extractor**
+- [x] **Step 4: 实现 Fetcher 与 Trafilatura Extractor**
 
 Fetcher 构造函数注入 `httpx.AsyncClient` 与 `UrlPolicy`。测试中的 UrlPolicy 注入 resolver，把 `fixture.test` 解析为 global 地址 `93.184.216.34`，HTTP client 使用 `httpx.MockTransport`，生产代码不增加 `allow_test_host` 开关。`tests/conftest.py` 的 `run_store` fixture 组合临时 Artifact Store、SQLite Repository、MockTransport 和该 UrlPolicy。Fetcher 使用总重定向上限 5、连接/读取超时、8 MiB 响应上限和 HTML content-type allowlist。重试只覆盖 timeout、429 和 5xx，总尝试不超过 3。Extractor 调用 `trafilatura.extract(raw_html, url=final_url, output_format="txt", include_comments=False, include_tables=True)`；空文本返回 `EMPTY_CONTENT`。
 
-- [ ] **Step 5: 运行测试并提交**
+- [x] **Step 5: 运行测试并提交**
 
 Run: `uv run pytest tests/unit/test_url_policy.py tests/integration/test_html_ingestion.py tests/fault_injection/test_network_failures.py -q`
 Expected: PASS。
