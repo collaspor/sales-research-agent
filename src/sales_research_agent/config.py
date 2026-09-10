@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     tavily_api_key: str | None = None
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
-    model: str = "deepseek-chat"
+    deepseek_model: str = "deepseek-chat"
     live_mode: bool = False
     run_root: Path = Path("var/runs")
     max_questions: int = 4

@@ -13,5 +13,7 @@ def test_offline_mode_uses_safe_defaults_without_api_keys() -> None:
     settings = Settings(live_mode=False, tavily_api_key=None, deepseek_api_key=None)
 
     assert settings.live_mode is False
+    assert settings.deepseek_base_url == "https://api.deepseek.com"
+    assert settings.deepseek_model == "deepseek-chat"
     assert settings.max_sources == 6
     assert settings.max_concurrency == 3
