@@ -237,7 +237,7 @@ git commit -m "build: initialize poc project"
 - Create: `tests/integration/test_checkpoint_compatibility.py`
 - Create: `tests/integration/checkpoint_compatibility_child.py`
 
-- [ ] **Step 1: 写最小持久化和 pending writes 测试**
+- [x] **Step 1: 写最小持久化和 pending writes 测试**
 
 ```python
 # tests/integration/test_checkpoint_compatibility.py
@@ -298,7 +298,7 @@ def _run_checkpoint_child(mode: str, database_path: Path, calls_path: Path) -> d
 以 `ainvoke(None)` 恢复。两个模式均使用真实 `AsyncSqliteSaver`，从而验证跨进程恢复不会重跑
 已经成功的分支。
 
-- [ ] **Step 2: 运行并确认实际兼容结果**
+- [x] **Step 2: 运行并确认实际兼容结果**
 
 Run: `uv run pytest tests/integration/test_checkpoint_compatibility.py -q`
 Expected: `crash` 进程的 pending write 已落盘且调用数为 `successful:1/failing:1/join:0`；关闭
@@ -306,7 +306,7 @@ Saver 后，`resume` 进程重开 Saver 并重新编译图，最终调用数为 
 `completed` 包含三个节点且没有重复。如果失败，只允许依据官方 API 调整 Saver 初始化或 resume
 调用，并把差异记录在规格“决策门”中。
 
-- [ ] **Step 3: 定义可序列化 POC State**
+- [x] **Step 3: 定义可序列化 POC State**
 
 ```python
 # src/sales_research_agent/graph/state.py
@@ -340,7 +340,7 @@ class PocState(TypedDict):
 
 `current_source_id` 由 `Send` 作为单来源分支的局部输入提供，不属于全局 `PocState`。
 
-- [ ] **Step 4: 运行测试、类型检查并提交**
+- [x] **Step 4: 运行测试、类型检查并提交**
 
 Run: `uv run pytest tests/integration/test_checkpoint_compatibility.py -q && uv run mypy src`
 Expected: PASS。
