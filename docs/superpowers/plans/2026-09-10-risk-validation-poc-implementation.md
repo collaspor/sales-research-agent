@@ -362,7 +362,7 @@ git commit -m "test: validate sqlite checkpoint recovery"
 - Create: `tests/integration/test_sqlite_repository.py`
 - Create: `tests/integration/test_artifact_store.py`
 
-- [ ] **Step 1: 写 lineage 与幂等失败测试**
+- [x] **Step 1: 写 lineage 与幂等失败测试**
 
 ```python
 def test_fact_requires_evidence_id() -> None:
@@ -394,12 +394,12 @@ async def test_repository_upsert_is_idempotent(repository: SQLiteRepository) -> 
     assert len(await repository.list_sources("run-1")) == 1
 ```
 
-- [ ] **Step 2: 运行并确认 RED**
+- [x] **Step 2: 运行并确认 RED**
 
 Run: `uv run pytest tests/unit/test_domain_models.py tests/integration/test_sqlite_repository.py -q`
 Expected: FAIL，领域类型和 Repository 尚不存在。
 
-- [ ] **Step 3: 实现领域类型和 Repository port**
+- [x] **Step 3: 实现领域类型和 Repository port**
 
 使用 Pydantic 定义以下最小字段，不增加 POC 未使用的可选字段：
 
@@ -425,7 +425,7 @@ ArtifactRef: id, run_id, relative_path, sha256, media_type, size_bytes, created_
 
 `DomainRepository` 明确定义 `initialize()`；为 Source、SourceRevision、DocumentBlock、Evidence、Claim、Verification、Gap、Failure、ReportVersion、ArtifactRef 分别定义 `upsert_*`、`get_*` 和按 run 查询方法；另定义 `append_audit_event()`、`save_stats()`、`count_source_revisions()`、`has_duplicate_operation_keys()`。每个 `upsert_*` 都接收实体与 `operation_key`。测试 fixture 在 `tests/conftest.py` 为每个测试创建独立临时数据库并调用 `initialize()`；调用方不能执行裸 SQL。
 
-- [ ] **Step 4: 实现最小 SQLite schema 和幂等写入**
+- [x] **Step 4: 实现最小 SQLite schema 和幂等写入**
 
 Repository 初始化必须执行：
 
@@ -437,7 +437,7 @@ PRAGMA busy_timeout = 5000;
 
 每张表存储稳定 ID、`run_id`、JSON payload 和 `operation_key UNIQUE`。单次 upsert 使用短事务；重复 operation key 返回既有实体 ID。
 
-- [ ] **Step 5: 写 Artifact 原子写入测试和实现**
+- [x] **Step 5: 写 Artifact 原子写入测试和实现**
 
 ```python
 def test_artifact_store_writes_content_and_hash(tmp_path: Path) -> None:
@@ -449,7 +449,7 @@ def test_artifact_store_writes_content_and_hash(tmp_path: Path) -> None:
 
 `ArtifactStore.write_bytes/write_text` 写入同目录临时文件，flush 后用 `Path.replace()` 原子替换，并返回包含相对路径、SHA-256、media type 和大小的 `ArtifactRef`。
 
-- [ ] **Step 6: 运行测试并提交**
+- [x] **Step 6: 运行测试并提交**
 
 Run: `uv run pytest tests/unit/test_domain_models.py tests/integration/test_sqlite_repository.py tests/integration/test_artifact_store.py -q`
 Expected: PASS。
