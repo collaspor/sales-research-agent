@@ -469,7 +469,7 @@ git commit -m "feat: add traceable domain persistence"
 - Create: `tests/unit/test_numeric_guard.py`
 - Create: `tests/unit/test_quality_gate.py`
 
-- [ ] **Step 1: 写 exact/normalized 和数字改写失败测试**
+- [x] **Step 1: 写 exact/normalized 和数字改写失败测试**
 
 ```python
 def test_normalized_locator_returns_original_offsets() -> None:
@@ -488,18 +488,18 @@ def test_numeric_guard_rejects_changed_percentage() -> None:
     assert result.reason == "NUMERIC_MISMATCH"
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 Run: `uv run pytest tests/unit/test_quote_locator.py tests/unit/test_numeric_guard.py -q`
 Expected: FAIL，定位与保护函数不存在。
 
-- [ ] **Step 3: 实现最小算法**
+- [x] **Step 3: 实现最小算法**
 
 `locate_quote` 先 exact `str.find`；再构建“删除 Unicode 空白并统一常见全角标点”的规范化字符流，同时保存规范化索引到原始索引的映射，返回原文 start/end。POC 不实现 fuzzy matching。
 
 `compare_critical_tokens` 用编译正则提取百分比、金额、日期、四位年份及带单位数字，并要求候选 quote 的 token multiset 是定位原文对应 token 的相等集合。
 
-- [ ] **Step 4: 写质量门禁测试和实现**
+- [x] **Step 4: 写质量门禁测试和实现**
 
 ```python
 @pytest.mark.parametrize("decision", ["UNSUPPORTED", "PARTIALLY_SUPPORTED", "CONTRADICTED"])
@@ -515,7 +515,7 @@ def test_fact_without_evidence_is_rejected() -> None:
 
 `decide_claim` 的顺序固定为定位 → 数字 → 语义；只有 FACT 的三个条件全通过才批准。Inference 和 Question 使用单独分支，不能被误计入外部 Fact。
 
-- [ ] **Step 5: 运行测试并提交**
+- [x] **Step 5: 运行测试并提交**
 
 Run: `uv run pytest tests/unit/test_quote_locator.py tests/unit/test_numeric_guard.py tests/unit/test_quality_gate.py -q`
 Expected: PASS。
