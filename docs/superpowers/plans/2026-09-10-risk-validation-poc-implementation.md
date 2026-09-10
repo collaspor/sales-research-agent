@@ -235,73 +235,76 @@ git commit -m "build: initialize poc project"
 **Files:**
 - Create: `src/sales_research_agent/graph/state.py`
 - Create: `tests/integration/test_checkpoint_compatibility.py`
+- Create: `tests/integration/checkpoint_compatibility_child.py`
 
 - [ ] **Step 1: 写最小持久化和 pending writes 测试**
 
 ```python
 # tests/integration/test_checkpoint_compatibility.py
+import json
+import os
 from pathlib import Path
-from typing import Annotated, TypedDict
+import subprocess
+import sys
 
 import pytest
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langgraph.graph import END, START, StateGraph
 
 
-def append(values: list[str], update: list[str]) -> list[str]:
-    return list(dict.fromkeys([*values, *update]))
-
-
-class State(TypedDict):
-    completed: Annotated[list[str], append]
-
-
-@pytest.mark.asyncio
-async def test_async_sqlite_saver_keeps_successful_pending_writes(
+def test_async_sqlite_saver_recovers_pending_writes_after_process_restart(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("LANGGRAPH_STRICT_MSGPACK", "true")
-    calls = {"successful": 0, "failing": 0, "join": 0}
+    database_path = tmp_path / "checkpoint.sqlite3"
+    calls_path = tmp_path / "calls.json"
 
-    async def successful(_: State) -> dict[str, list[str]]:
-        calls["successful"] += 1
-        return {"completed": ["successful"]}
+    crash = _run_checkpoint_child("crash", database_path, calls_path)
+    assert crash["strict_msgpack"] is True
+    assert crash["successful_pending_write_seen"] is True
+    assert crash["calls"] == {"successful": 1, "failing": 1, "join": 0}
 
-    async def failing(_: State) -> dict[str, list[str]]:
-        calls["failing"] += 1
-        if calls["failing"] == 1:
-            raise RuntimeError("injected crash")
-        return {"completed": ["failing"]}
+    resumed = _run_checkpoint_child("resume", database_path, calls_path)
+    assert resumed["strict_msgpack"] is True
+    assert set(resumed["completed"]) == {"successful", "failing", "join"}
+    assert len(resumed["completed"]) == len(set(resumed["completed"]))
+    assert resumed["calls"] == {"successful": 1, "failing": 2, "join": 1}
 
-    async def join(_: State) -> dict[str, list[str]]:
-        calls["join"] += 1
-        return {"completed": ["join"]}
 
-    builder = StateGraph(State)
-    builder.add_node("successful", successful)
-    builder.add_node("failing", failing)
-    builder.add_node("join", join)
-    builder.add_edge(START, "successful")
-    builder.add_edge(START, "failing")
-    builder.add_edge(["successful", "failing"], "join")
-    builder.add_edge("join", END)
-    config = {"configurable": {"thread_id": "checkpoint-test"}}
-
-    async with AsyncSqliteSaver.from_conn_string(str(tmp_path / "checkpoint.sqlite3")) as saver:
-        graph = builder.compile(checkpointer=saver)
-        with pytest.raises(RuntimeError, match="injected crash"):
-            await graph.ainvoke({"completed": []}, config=config)
-        result = await graph.ainvoke(None, config=config)
-
-    assert set(result["completed"]) == {"successful", "failing", "join"}
-    assert calls == {"successful": 1, "failing": 2, "join": 1}
+def _run_checkpoint_child(mode: str, database_path: Path, calls_path: Path) -> dict[str, object]:
+    environment = os.environ.copy()
+    environment["LANGGRAPH_STRICT_MSGPACK"] = "true"
+    process = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).with_name("checkpoint_compatibility_child.py")),
+            mode,
+            str(database_path),
+            str(calls_path),
+        ],
+        capture_output=True,
+        check=False,
+        env=environment,
+        text=True,
+    )
+    assert process.returncode == 0, process.stderr
+    return json.loads(process.stdout)
 ```
+
+`checkpoint_compatibility_child.py` 在导入任意 LangGraph 模块前由父测试设置
+`LANGGRAPH_STRICT_MSGPACK=true`，并直接检查 `STRICT_MSGPACK_ENABLED`。它以两个独立
+进程运行：`crash` 模式在 `successful` 的 pending write 可通过
+`AsyncSqliteSaver.aget_tuple()` 读取后注入异常，退出 `async with` 关闭 Saver，并把调用数
+写入临时 `calls.json`；`resume` 模式重新打开同一 SQLite 数据库、重新编译 `StateGraph`，再
+以 `ainvoke(None)` 恢复。两个模式均使用真实 `AsyncSqliteSaver`，从而验证跨进程恢复不会重跑
+已经成功的分支。
 
 - [ ] **Step 2: 运行并确认实际兼容结果**
 
 Run: `uv run pytest tests/integration/test_checkpoint_compatibility.py -q`
-Expected: 测试在当前锁定依赖上通过。如果失败，只允许依据官方 API 调整 Saver 初始化或 resume 调用，并把差异记录在规格“决策门”中。
+Expected: `crash` 进程的 pending write 已落盘且调用数为 `successful:1/failing:1/join:0`；关闭
+Saver 后，`resume` 进程重开 Saver 并重新编译图，最终调用数为 `successful:1/failing:2/join:1`，
+`completed` 包含三个节点且没有重复。如果失败，只允许依据官方 API 调整 Saver 初始化或 resume
+调用，并把差异记录在规格“决策门”中。
 
 - [ ] **Step 3: 定义可序列化 POC State**
 
