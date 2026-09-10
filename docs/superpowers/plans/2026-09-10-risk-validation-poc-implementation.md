@@ -666,7 +666,7 @@ git commit -m "feat: add bounded html ingestion"
 - Create: `tests/integration/test_evidence_claim_pipeline.py`
 - Create: `tests/fault_injection/test_model_failures.py`
 
-- [ ] **Step 1: 写端到端领域链失败测试**
+- [x] **Step 1: 写端到端领域链失败测试**
 
 ```python
 @pytest.mark.asyncio
@@ -697,20 +697,20 @@ async def test_pipeline_rejects_model_quote_not_present_in_source(pipeline) -> N
     assert result.gap_ids
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 Run: `uv run pytest tests/integration/test_evidence_claim_pipeline.py -q`
 Expected: FAIL，应用服务不存在。
 
-- [ ] **Step 3: 实现 `ResearchPipeline`**
+- [x] **Step 3: 实现 `ResearchPipeline`**
 
 `tests/fakes.py` 为 `FakeResearchModel` 增加 `queue_evidence()`、`queue_claim()`、`queue_verification()`，并提供显式调用计数。`ResearchPipeline` 按以下固定顺序执行并逐步写 Repository：读取 DocumentBlock → 调模型提议 Evidence → 确定性定位与数字检查 → 保存 Evidence → 调模型生成 Claim → 对 Fact 调语义核验 → 保存 Verification → 调质量门禁 → 保存 Gap/批准状态。每次模型原始响应先经 secret redactor，再写 `model_responses/`。
 
-- [ ] **Step 4: 增加模型失败收敛测试**
+- [x] **Step 4: 增加模型失败收敛测试**
 
 覆盖空响应后成功、连续两次 Schema 错误、核验 Provider 超时三种情况。连续失败产生结构化 Failure/Gap，不允许生成未经核验 Fact。
 
-- [ ] **Step 5: 运行测试并提交**
+- [x] **Step 5: 运行测试并提交**
 
 Run: `uv run pytest tests/integration/test_evidence_claim_pipeline.py tests/fault_injection/test_model_failures.py -q`
 Expected: PASS。
