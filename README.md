@@ -21,6 +21,7 @@
 - [技术设计自审摘要](docs/technical-design-review-summary.md)
 - [项目开发复盘与面试讲解](docs/project-development-retrospective-and-interview-guide.txt)
 - [阶段 0：POC 风险验证规格](docs/superpowers/specs/2026-09-10-risk-validation-poc-design.md)
+- [阶段 0：POC 实施计划](docs/superpowers/plans/2026-09-10-risk-validation-poc-implementation.md)
 
 ## 交互原型
 
