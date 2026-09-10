@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>售前可信调研工作台 · 交互示意</title>
+  <!--
+    原型假设：
+    - 面向售前工程师个人，在桌面浏览器中使用；
+    - 核心流程是：新建调研 → 运行详情 → 报告审阅 → 历史记录；
+    - 这是需求验证原型，不连接后端，不代表最终视觉规范；
+    - 页面中的企业、结论、来源、时间与运行记录均为演示数据，不对应真实企业；
+    - 设计方向为“编辑式研究工作台”：连续阅读优先，操作与状态退居两侧。
+
+    设计理由：
+    - 暖白底与墨色正文模拟研究底稿，赤褐色只用于关键动作；
+    - 标题使用衬线字体建立编辑感，正文使用中文无衬线字体保证长文可读性；
+    - 不使用渐变、装饰性图标和无依据指标；
+    - 单文件、无网络依赖，双击即可浏览。
+  -->
+  <style>
+    :root {
+      --paper: #f4f0e7;
+      --paper-deep: #ebe4d8;
+      --sheet: #fffdf8;
+      --ink: #20201d;
+      --muted: #6d6a63;
+      --faint: #a19c91;
+      --line: #d8d1c5;
+      --line-dark: #bcb3a4;
+      --accent: #9a4934;
+      --accent-dark: #713324;
+      --accent-soft: #f0ddd5;
+      --verified: #2f684e;
+      --verified-soft: #e2eee8;
+      --warning: #8b651b;
+      --warning-soft: #f4ead1;
+      --danger: #8b3c36;
+      --danger-soft: #f2ddda;
+      --info: #455f76;
+      --info-soft: #e3eaf0;
+      --shadow: 0 18px 48px rgba(58, 46, 31, 0.10);
+      --serif: Georgia, "Songti SC", "STSong", serif;
+      --sans: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+      --mono: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--paper); }
+    body {
+      margin: 0;
+      min-width: 1080px;
+      min-height: 100vh;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.7;
+    }
+    button, input, textarea, select { font: inherit; }
+    button { cursor: pointer; }
+    a { color: inherit; }
+    h1, h2, h3 { text-wrap: balance; }
+    p { text-wrap: pretty; }
+
+    .demo-ribbon {
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #2d2b27;
+      color: #f3eee5;
+      font: 12px/1 var(--mono);
+      letter-spacing: .08em;
+    }
+
+    .app-shell {
+      display: grid;
+      grid-template-columns: 236px minmax(0, 1fr);
+      min-height: calc(100vh - 30px);
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: calc(100vh - 30px);
+      display: flex;
+      flex-direction: column;
+      padding: 30px 20px 22px;
+      border-right: 1px solid var(--line-dark);
+      background: #eee8dd;
+    }
+    .brand {
+      padding: 0 10px 27px;
+      border-bottom: 1px solid var(--line-dark);
+    }
+    .brand-mark {
+      font: 600 12px/1 var(--mono);
+      letter-spacing: .16em;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+    .brand-name {
+      margin-top: 9px;
+      font: 700 23px/1.25 var(--serif);
+      letter-spacing: -.02em;
+    }
+    .brand-sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .nav {
+      display: grid;
+      gap: 5px;
+      margin-top: 24px;
+    }
+    .nav-button {
+      width: 100%;
+      min-height: 46px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 3px;
+      background: transparent;
+      color: var(--muted);
+      text-align: left;
+    }
+    .nav-button:hover { background: rgba(255,255,255,.45); color: var(--ink); }
+    .nav-button.active {
+      background: var(--sheet);
+      color: var(--ink);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+    .nav-index {
+      width: 24px;
+      font: 12px/1 var(--mono);
+      color: var(--faint);
+    }
+    .nav-button.active .nav-index { color: var(--accent); }
+    .sidebar-note {
+      margin-top: auto;
+      padding: 18px 10px 0;
+      border-top: 1px solid var(--line-dark);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.65;
+    }
+
+    .main { min-width: 0; }
+    .topbar {
+      height: 70px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 38px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(244, 240, 231, .94);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(10px);
+    }
+    .breadcrumb { color: var(--muted); font-size: 13px; }
+    .breadcrumb strong { color: var(--ink); font-weight: 600; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .status-pair { display: flex; gap: 6px; margin-right: 8px; }
+
+    .page {
+      display: none;
+      padding: 46px 42px 70px;
+      animation: pageIn .24s ease-out;
+    }
+    .page.active { display: block; }
+    @keyframes pageIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .content-narrow { max-width: 920px; margin: 0 auto; }
+    .content-wide { max-width: 1220px; margin: 0 auto; }
+
+    .eyebrow {
+      margin-bottom: 8px;
+      color: var(--accent);
+      font: 600 12px/1.4 var(--mono);
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    .page-title {
+      margin: 0;
+      font: 700 clamp(34px, 4vw, 54px)/1.08 var(--serif);
+      letter-spacing: -.035em;
+    }
+    .page-lead {
+      max-width: 700px;
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .button {
+      min-height: 42px;
+      padding: 0 17px;
+      border: 1px solid var(--line-dark);
+      border-radius: 3px;
+      background: var(--sheet);
+      color: var(--ink);
+      font-weight: 600;
+    }
+    .button:hover { border-color: var(--ink); }
+    .button.primary { border-color: var(--accent); background: var(--accent); color: white; }
+    .button.primary:hover { background: var(--accent-dark); }
+    .button.ghost { background: transparent; }
+    .button.danger { color: var(--danger); border-color: #d6aaa5; background: transparent; }
+    .button.small { min-height: 34px; padding: 0 12px; font-size: 13px; }
+    .button:focus-visible, .nav-button:focus-visible, .seg-button:focus-visible {
+      outline: 3px solid rgba(154,73,52,.24);
+      outline-offset: 2px;
+    }
+
+    .badge {
+      display: inline-flex;
+      min-height: 25px;
+      align-items: center;
+      padding: 2px 8px;
+      border: 1px solid currentColor;
+      border-radius: 2px;
+      font: 600 11px/1 var(--mono);
+      letter-spacing: .04em;
+      white-space: nowrap;
+    }
+    .badge.success { color: var(--verified); background: var(--verified-soft); }
+    .badge.warning { color: var(--warning); background: var(--warning-soft); }
+    .badge.danger { color: var(--danger); background: var(--danger-soft); }
+    .badge.info { color: var(--info); background: var(--info-soft); }
+    .badge.neutral { color: var(--muted); background: #ede9e1; }
+
+    .brief-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 34px;
+      margin-top: 40px;
+    }
+    .form-sheet {
+      padding: 34px;
+      background: var(--sheet);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+    .form-section + .form-section { margin-top: 32px; padding-top: 28px; border-top: 1px solid var(--line); }
+    .section-heading { margin: 0 0 6px; font: 700 21px/1.3 var(--serif); }
+    .section-help { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .field { display: grid; gap: 7px; }
+    .field.full { grid-column: 1 / -1; }
+    label { font-size: 13px; font-weight: 600; }
+    .required { color: var(--accent); }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--line-dark);
+      border-radius: 2px;
+      background: #fffefa;
+      color: var(--ink);
+      padding: 11px 12px;
+      outline: none;
+    }
+    input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(154,73,52,.10); }
+    textarea { min-height: 104px; resize: vertical; }
+    .modules { display: flex; flex-wrap: wrap; gap: 8px; }
+    .module-option input { position: absolute; opacity: 0; pointer-events: none; }
+    .module-option span {
+      display: inline-flex;
+      min-height: 38px;
+      align-items: center;
+      padding: 0 11px;
+      border: 1px solid var(--line);
+      border-radius: 2px;
+      background: #f9f6ef;
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .module-option input:checked + span { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-dark); }
+    .brief-aside { display: grid; align-content: start; gap: 20px; }
+    .aside-block { padding: 20px 0; border-top: 1px solid var(--line-dark); }
+    .aside-block:first-child { border-top: 3px solid var(--ink); }
+    .aside-title { font: 700 16px/1.3 var(--serif); }
+    .aside-block p { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+    .form-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 28px; }
+    .privacy-note { max-width: 430px; color: var(--muted); font-size: 12px; }
+
+    .run-head {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 24px;
+    }
+    .run-actions { display: flex; gap: 10px; }
+    .run-meta {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      margin-top: 34px;
+      border-top: 1px solid var(--line-dark);
+      border-bottom: 1px solid var(--line-dark);
+    }
+    .meta-cell { padding: 18px 20px 18px 0; }
+    .meta-cell + .meta-cell { padding-left: 20px; border-left: 1px solid var(--line); }
+    .meta-label { color: var(--muted); font-size: 11px; letter-spacing: .08em; }
+    .meta-value { margin-top: 5px; font: 700 18px/1.2 var(--serif); }
+    .run-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 34px; margin-top: 34px; }
+    .timeline { background: var(--sheet); border: 1px solid var(--line); }
+    .timeline-title { padding: 22px 24px 16px; font: 700 19px/1.3 var(--serif); border-bottom: 1px solid var(--line); }
+    .step { display: grid; grid-template-columns: 30px 1fr auto; gap: 13px; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+    .step:last-child { border-bottom: 0; }
+    .step-marker {
+      width: 24px; height: 24px; display: grid; place-items: center;
+      border: 1px solid var(--line-dark); border-radius: 50%;
+      font: 11px/1 var(--mono); color: var(--muted);
+    }
+    .step.done .step-marker { background: var(--verified); border-color: var(--verified); color: white; }
+    .step.active .step-marker { border: 6px solid var(--accent-soft); background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .step-name { font-weight: 600; }
+    .step-note { margin-top: 2px; color: var(--muted); font-size: 12px; }
+    .step-time { font: 12px/1.4 var(--mono); color: var(--muted); }
+    .progress-line { height: 5px; margin-top: 10px; background: var(--paper-deep); overflow: hidden; }
+    .progress-fill { height: 100%; width: 68%; background: var(--accent); }
+    .run-side { display: grid; gap: 22px; align-content: start; }
+    .side-panel { padding: 21px; border: 1px solid var(--line); background: rgba(255,253,248,.62); }
+    .side-panel h3 { margin: 0 0 14px; font: 700 17px/1.3 var(--serif); }
+    .coverage-list { display: grid; gap: 14px; }
+    .coverage-row { display: grid; gap: 5px; }
+    .coverage-top { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
+    .coverage-bar { height: 3px; background: var(--line); }
+    .coverage-bar > span { display: block; height: 100%; background: var(--verified); }
+    .event-list { display: grid; gap: 12px; }
+    .event { padding-left: 12px; border-left: 1px solid var(--line-dark); }
+    .event-time { font: 11px/1.4 var(--mono); color: var(--faint); }
+    .event-copy { margin-top: 2px; font-size: 12px; color: var(--muted); }
+
+    .report-layout { display: grid; grid-template-columns: 210px minmax(0, 760px) 286px; gap: 28px; align-items: start; }
+    .report-toc, .review-panel { position: sticky; top: 98px; }
+    .toc-title, .panel-label { margin-bottom: 12px; font: 600 11px/1 var(--mono); color: var(--faint); letter-spacing: .1em; }
+    .toc-list { display: grid; }
+    .toc-item {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      text-decoration: none;
+    }
+    .toc-item.active { color: var(--accent); font-weight: 700; }
+    .report-sheet { background: var(--sheet); border: 1px solid var(--line); box-shadow: var(--shadow); }
+    .report-cover { padding: 40px 48px 32px; border-bottom: 1px solid var(--line); }
+    .report-flags { display: flex; flex-wrap: wrap; gap: 7px; }
+    .report-title { margin: 24px 0 8px; font: 700 39px/1.12 var(--serif); letter-spacing: -.025em; }
+    .report-subtitle { color: var(--muted); }
+    .report-identifiers { display: flex; gap: 18px; margin-top: 22px; color: var(--muted); font: 11px/1.5 var(--mono); }
+    .report-section { padding: 34px 48px; border-bottom: 1px solid var(--line); }
+    .report-section:last-child { border-bottom: 0; }
+    .report-section h2 { margin: 0 0 20px; font: 700 25px/1.25 var(--serif); }
+    .summary-list { margin: 0; padding: 0; list-style: none; counter-reset: summary; }
+    .summary-list li { counter-increment: summary; display: grid; grid-template-columns: 28px 1fr; gap: 12px; padding: 13px 0; border-top: 1px solid var(--line); }
+    .summary-list li::before { content: counter(summary, decimal-leading-zero); font: 11px/1.9 var(--mono); color: var(--accent); }
+    .summary-list strong { font-weight: 700; }
+    .finding {
+      margin-top: 18px;
+      padding-top: 22px;
+      border-top: 2px solid var(--ink);
+    }
+    .finding:first-of-type { margin-top: 0; }
+    .finding-head { display: flex; justify-content: space-between; gap: 20px; }
+    .claim-id { color: var(--faint); font: 11px/1.5 var(--mono); }
+    .finding h3 { margin: 5px 0 8px; font: 700 19px/1.35 var(--serif); }
+    .finding p { margin: 0; color: #3d3b36; }
+    .finding-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
+    .evidence-toggle {
+      margin-top: 16px;
+      padding: 0;
+      border: 0;
+      border-bottom: 1px solid var(--accent);
+      background: transparent;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .evidence-box { display: none; margin-top: 15px; padding: 17px 18px; background: #f4efe6; border-top: 1px solid var(--line-dark); }
+    .evidence-box.open { display: block; }
+    .evidence-quote { margin: 0; font-family: var(--serif); color: #3f3b34; }
+    .source-row { display: flex; justify-content: space-between; gap: 14px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .source-link { border: 0; padding: 0; background: transparent; color: var(--accent); text-decoration: underline; }
+    .inference-note { margin-top: 15px; padding: 14px 16px; border-top: 1px solid var(--line-dark); border-bottom: 1px solid var(--line-dark); background: #faf6ef; font-size: 13px; }
+    .inference-note strong { font-family: var(--serif); }
+
+    .review-panel { display: grid; gap: 17px; }
+    .review-summary { padding: 19px; border-top: 3px solid var(--ink); background: rgba(255,253,248,.58); }
+    .review-count { font: 700 30px/1 var(--serif); }
+    .review-copy { margin-top: 7px; color: var(--muted); font-size: 12px; }
+    .selected-claim { padding: 18px; background: var(--sheet); border: 1px solid var(--line); }
+    .selected-claim h3 { margin: 5px 0 12px; font: 700 16px/1.35 var(--serif); }
+    .segmented { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line-dark); }
+    .seg-button { min-height: 38px; border: 0; border-right: 1px solid var(--line-dark); background: transparent; color: var(--muted); font-size: 12px; }
+    .seg-button:last-child { border-right: 0; }
+    .seg-button.active.accept { color: var(--verified); background: var(--verified-soft); }
+    .seg-button.active.review { color: var(--warning); background: var(--warning-soft); }
+    .seg-button.active.reject { color: var(--danger); background: var(--danger-soft); }
+    .note-area { min-height: 76px; margin-top: 12px; font-size: 12px; }
+    .review-buttons { display: grid; gap: 8px; margin-top: 12px; }
+    .review-buttons .button { width: 100%; }
+    .version-note { color: var(--muted); font-size: 11px; }
+
+    .history-head { display: flex; align-items: end; justify-content: space-between; gap: 30px; }
+    .history-filter { min-width: 240px; }
+    .history-table { margin-top: 34px; border-top: 2px solid var(--ink); background: var(--sheet); }
+    .history-row {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.4fr) 150px 132px 132px 130px;
+      gap: 18px;
+      align-items: center;
+      min-height: 76px;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .history-row.header { min-height: 42px; background: #ece6dc; color: var(--muted); font: 11px/1 var(--mono); letter-spacing: .06em; }
+    .history-row:not(.header):hover { background: #faf7f0; }
+    .history-title { font: 700 16px/1.35 var(--serif); }
+    .history-sub { margin-top: 3px; color: var(--muted); font: 11px/1.4 var(--mono); }
+    .version-stack { display: flex; align-items: center; gap: 5px; }
+    .version-pill { padding: 2px 6px; border: 1px solid var(--line); font: 11px/1.5 var(--mono); }
+    .open-run { border: 0; background: transparent; color: var(--accent); text-decoration: underline; font-weight: 700; }
+
+    .modal-backdrop {
+      position: fixed; inset: 0; z-index: 50; display: none; place-items: center;
+      padding: 30px; background: rgba(30, 28, 24, .54); backdrop-filter: blur(5px);
+    }
+    .modal-backdrop.open { display: grid; }
+    .modal { width: min(560px, 100%); padding: 30px; background: var(--sheet); border: 1px solid var(--line-dark); box-shadow: 0 28px 80px rgba(0,0,0,.24); }
+    .modal h2 { margin: 0; font: 700 25px/1.25 var(--serif); }
+    .modal p { margin: 8px 0 20px; color: var(--muted); font-size: 13px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+    .toast {
+      position: fixed; right: 26px; bottom: 26px; z-index: 80;
+      max-width: 360px; padding: 14px 17px; background: #282621; color: #fffdf8;
+      box-shadow: 0 14px 42px rgba(0,0,0,.20); font-size: 13px;
+      opacity: 0; transform: translateY(12px); pointer-events: none; transition: .22s ease;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 1200px) {
+      .report-layout { grid-template-columns: 170px minmax(0, 1fr); }
+      .review-panel { grid-column: 2; position: static; grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-ribbon">需求示意原型 · 全部企业、结论与来源均为演示数据 · 不连接真实后端</div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">Evidence First</div>
+        <div class="brand-name">售前可信调研</div>
+        <div class="brand-sub">个人研究工作台</div>
+      </div>
+      <nav class="nav" aria-label="主导航">
+        <button class="nav-button" data-page="new"><span class="nav-index">01</span><span>新建调研</span></button>
+        <button class="nav-button" data-page="run"><span class="nav-index">02</span><span>运行详情</span></button>
+        <button class="nav-button active" data-page="report"><span class="nav-index">03</span><span>报告审阅</span></button>
+        <button class="nav-button" data-page="history"><span class="nav-index">04</span><span>历史记录</span></button>
+      </nav>
+      <div class="sidebar-note">
+        <strong>可信度是硬门槛</strong><br>
+        外部事实必须绑定证据；证据不足时保留缺口，不用流畅文字掩盖不确定性。
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="breadcrumb" id="breadcrumb">调研运行 / <strong>澄川智造 · 首次交流准备</strong></div>
+        <div class="top-actions">
+          <div class="status-pair" id="topStatus">
+            <span class="badge success">COMPLETED</span>
+            <span class="badge warning">IN_REVIEW</span>
+          </div>
+          <button class="button small" data-export>导出 Markdown</button>
+        </div>
+      </header>
+
+      <section class="page" data-page-view="new">
+        <div class="content-narrow">
+          <div class="eyebrow">Research Brief</div>
+          <h1 class="page-title">先定义这次调研，<br>再让 Agent 开始工作。</h1>
+          <p class="page-lead">提供最少但必要的客户背景。用户输入用于指导研究，不会自动被当作公网事实，也不会原样发送给不必要的外部服务。</p>
+
+          <div class="brief-grid">
+            <form class="form-sheet" id="briefForm">
+              <div class="form-section">
+                <h2 class="section-heading">基本信息</h2>
+                <p class="section-help">带星号的字段是启动调研的最低要求。</p>
+                <div class="field-grid">
+                  <div class="field">
+                    <label for="customer">客户或调研对象 <span class="required">*</span></label>
+                    <input id="customer" value="澄川智造（示例企业）">
+                  </div>
+                  <div class="field">
+                    <label for="meeting">会议主题 <span class="required">*</span></label>
+                    <input id="meeting" value="首次技术交流与需求探索">
+                  </div>
+                  <div class="field full">
+                    <label for="context">已知背景</label>
+                    <textarea id="context">商务反馈：客户正在评估知识检索与内部问答方向，希望了解现有信息化基础和可能的切入点。以上为用户提供背景，尚未经过公网核实。</textarea>
+                  </div>
+                  <div class="field full">
+                    <label for="goal">本次调研要支持的决策 <span class="required">*</span></label>
+                    <textarea id="goal">判断首次交流应重点了解哪些业务问题；准备可核验的客户背景、替代方案与验证问题。</textarea>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <h2 class="section-heading">报告模块</h2>
+                <p class="section-help">固定核心章节始终生成；以下模块可按场景增删。</p>
+                <div class="modules">
+                  <label class="module-option"><input type="checkbox" checked><span>客户概况</span></label>
+                  <label class="module-option"><input type="checkbox" checked><span>行业与政策</span></label>
+                  <label class="module-option"><input type="checkbox" checked><span>需求假设</span></label>
+                  <label class="module-option"><input type="checkbox" checked><span>竞品与替代</span></label>
+                  <label class="module-option"><input type="checkbox" checked><span>定位与异议</span></label>
+                  <label class="module-option"><input type="checkbox" checked><span>首次会议准备</span></label>
+                </div>
+              </div>
+
+              <div class="form-footer">
+                <div class="privacy-note">敏感内容不会被原样拼入搜索词。运行前仍建议删除客户联系人、未公开预算等不必要信息。</div>
+                <button class="button primary" type="submit">确认并开始调研</button>
+              </div>
+            </form>
+
+            <aside class="brief-aside">
+              <div class="aside-block">
+                <div class="aside-title">预计交付</div>
+                <p>30 分钟时间盒内优先生成可信可用报告；覆盖不足时交付明确标记的 PARTIAL。</p>
+              </div>
+              <div class="aside-block">
+                <div class="aside-title">证据边界</div>
+                <p>只使用公开网页和公开 PDF。搜索摘要、登录内容和无法追溯的二手转述不直接作为证据。</p>
+              </div>
+              <div class="aside-block">
+                <div class="aside-title">输出载体</div>
+                <p>浏览器负责结构化审阅；Markdown 用于自由编辑与归档，两者来自同一报告版本。</p>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page-view="run">
+        <div class="content-wide">
+          <div class="run-head">
+            <div>
+              <div class="eyebrow">Run / demo-20260910-001</div>
+              <h1 class="page-title">澄川智造 · 首次交流准备</h1>
+              <p class="page-lead">Agent 正在核验关键发现，并检查每条外部事实是否具有可追溯证据。</p>
+            </div>
+            <div class="run-actions">
+              <button class="button danger" id="cancelRun">取消运行</button>
+              <button class="button" id="partialRun">现在生成可信 PARTIAL</button>
+            </div>
+          </div>
+
+          <div class="run-meta">
+            <div class="meta-cell"><div class="meta-label">当前阶段</div><div class="meta-value">证据核验</div></div>
+            <div class="meta-cell"><div class="meta-label">已用时间</div><div class="meta-value">18 分 42 秒</div></div>
+            <div class="meta-cell"><div class="meta-label">问题覆盖</div><div class="meta-value">8 / 11</div></div>
+            <div class="meta-cell"><div class="meta-label">运行状态</div><div class="meta-value">RUNNING</div></div>
+          </div>
+
+          <div class="run-layout">
+            <div class="timeline">
+              <div class="timeline-title">研究生命周期</div>
+              <div class="step done">
+                <div class="step-marker">✓</div><div><div class="step-name">确认 Research Brief</div><div class="step-note">研究范围、时间边界与模块已锁定</div></div><div class="step-time">00:18</div>
+              </div>
+              <div class="step done">
+                <div class="step-marker">✓</div><div><div class="step-name">拆解研究问题</div><div class="step-note">形成 11 个可判定的研究问题</div></div><div class="step-time">01:26</div>
+              </div>
+              <div class="step done">
+                <div class="step-marker">✓</div><div><div class="step-name">搜索与来源发现</div><div class="step-note">保留候选来源，搜索摘要不进入证据池</div></div><div class="step-time">07:34</div>
+              </div>
+              <div class="step done">
+                <div class="step-marker">✓</div><div><div class="step-name">网页与 PDF 摄取</div><div class="step-note">1 个动态网页降级，已记录 Failure 并继续运行</div></div><div class="step-time">13:10</div>
+              </div>
+              <div class="step active">
+                <div class="step-marker"></div><div><div class="step-name">提取与核验证据</div><div class="step-note">正在交叉检查高影响 Claim 07</div><div class="progress-line"><div class="progress-fill"></div></div></div><div class="step-time">18:42</div>
+              </div>
+              <div class="step">
+                <div class="step-marker">6</div><div><div class="step-name">识别冲突与研究缺口</div><div class="step-note">等待前置阶段完成</div></div><div class="step-time">—</div>
+              </div>
+              <div class="step">
+                <div class="step-marker">7</div><div><div class="step-name">生成并校验报告</div><div class="step-note">等待前置阶段完成</div></div><div class="step-time">—</div>
+              </div>
+            </div>
+
+            <aside class="run-side">
+              <div class="side-panel">
+                <h3>问题覆盖</h3>
+                <div class="coverage-list">
+                  <div class="coverage-row"><div class="coverage-top"><span>客户概况</span><span>3 / 3</span></div><div class="coverage-bar"><span style="width:100%"></span></div></div>
+                  <div class="coverage-row"><div class="coverage-top"><span>需求假设</span><span>2 / 3</span></div><div class="coverage-bar"><span style="width:67%"></span></div></div>
+                  <div class="coverage-row"><div class="coverage-top"><span>竞品与替代</span><span>2 / 3</span></div><div class="coverage-bar"><span style="width:67%"></span></div></div>
+                  <div class="coverage-row"><div class="coverage-top"><span>会议准备</span><span>1 / 2</span></div><div class="coverage-bar"><span style="width:50%"></span></div></div>
+                </div>
+              </div>
+              <div class="side-panel">
+                <h3>最近事件</h3>
+                <div class="event-list">
+                  <div class="event"><div class="event-time">18:42</div><div class="event-copy">Claim 07 找到第二个独立来源，进入一致性检查。</div></div>
+                  <div class="event"><div class="event-time">17:08</div><div class="event-copy">动态页面抓取失败，静态正文已保留；该来源降级为线索。</div></div>
+                  <div class="event"><div class="event-time">15:31</div><div class="event-copy">PDF 页码与提取段落已建立定位关系。</div></div>
+                </div>
+              </div>
+              <div class="side-panel">
+                <h3>降级但未崩溃</h3>
+                <p style="margin:0;color:var(--muted);font-size:12px">当前记录 1 个可恢复抓取失败。该失败不会阻塞其他研究分支，并会出现在报告的风险与缺口中。</p>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="page active" data-page-view="report">
+        <div class="content-wide report-layout">
+          <aside class="report-toc">
+            <div class="toc-title">REPORT OUTLINE</div>
+            <a class="toc-item active" href="#summary">执行摘要</a>
+            <a class="toc-item" href="#findings">关键发现</a>
+            <a class="toc-item" href="#alternatives">竞品与替代</a>
+            <a class="toc-item" href="#risks">风险与缺口</a>
+            <a class="toc-item" href="#questions">会议验证问题</a>
+            <a class="toc-item" href="#ledger">证据台账</a>
+          </aside>
+
+          <article class="report-sheet">
+            <header class="report-cover">
+              <div class="report-flags">
+                <span class="badge success">COMPLETED</span>
+                <span class="badge warning">IN_REVIEW</span>
+                <span class="badge neutral">演示数据</span>
+              </div>
+              <h1 class="report-title">澄川智造<br>首次客户交流调研底稿</h1>
+              <div class="report-subtitle">帮助售前工程师决定“第一次见面应该知道什么、追问什么、不要轻易断言什么”。</div>
+              <div class="report-identifiers"><span>RUN demo-20260910-001</span><span>VERSION v1</span><span>AS OF 2026-09-10</span></div>
+            </header>
+
+            <section class="report-section" id="summary">
+              <h2>执行摘要</h2>
+              <ol class="summary-list">
+                <li><div><strong>存在值得验证的知识检索场景，但目前证据不足以断言客户已进入采购阶段。</strong>首次交流应优先确认使用部门、内容范围与当前替代流程。</div></li>
+                <li><div><strong>公开材料显示其数字化方向与本次话题存在关联。</strong>这一发现已由两个独立示例来源支持，但具体预算与项目时间仍为空白。</div></li>
+                <li><div><strong>替代方案不只包括同类软件，还包括现有门户搜索、人工问答和通用协作平台。</strong>异议准备应围绕可追溯性与维护成本，而非只比较模型能力。</div></li>
+              </ol>
+            </section>
+
+            <section class="report-section" id="findings">
+              <h2>关键发现与售前含义</h2>
+              <div class="finding" data-claim="CLM-007">
+                <div class="finding-head"><div><div class="claim-id">CLM-007 · 高影响事实</div><h3>公开材料中出现了与知识管理相关的建设方向</h3></div><span class="badge success">CORROBORATED</span></div>
+                <p>两个相互独立的示例来源都指向相同方向；它们能够支持“值得进一步询问”，但不能支持“客户已经立项”或“客户已有明确预算”。</p>
+                <div class="finding-meta"><span class="badge neutral">2 条 Evidence</span><span class="badge neutral">Tier 1 + Tier 2</span><span class="badge neutral">时效符合</span></div>
+                <button class="evidence-toggle" aria-expanded="false">展开证据与来源</button>
+                <div class="evidence-box">
+                  <blockquote class="evidence-quote">“示例证据摘录：该段只用于呈现产品结构，不对应真实企业或真实材料。”</blockquote>
+                  <div class="source-row"><span>SRC-003 · 官方页面（示例） · 页面段落 14</span><button class="source-link" data-source>打开原始来源</button></div>
+                  <blockquote class="evidence-quote" style="margin-top:16px">“第二条示例证据：用于演示独立来源的交叉支持关系。”</blockquote>
+                  <div class="source-row"><span>SRC-011 · 行业媒体（示例） · 发布日期已记录</span><button class="source-link" data-source>打开原始来源</button></div>
+                </div>
+                <div class="inference-note"><strong>售前推断：</strong> 首次交流可以询问知识入口、更新责任人与权限边界；该建议依赖 CLM-007，但不把推断写成客户现状。</div>
+              </div>
+
+              <div class="finding" data-claim="CLM-010">
+                <div class="finding-head"><div><div class="claim-id">CLM-010 · 高影响事实</div><h3>无法从公网确认具体采购时间与预算</h3></div><span class="badge warning">INSUFFICIENT</span></div>
+                <p>当前搜索范围内没有达到接纳标准的公开证据。报告保留这一研究缺口，并将其转化为会议验证问题。</p>
+                <div class="finding-meta"><span class="badge warning">Research Gap</span><span class="badge neutral">不进入确定事实</span></div>
+                <button class="evidence-toggle" aria-expanded="false">查看搜索边界</button>
+                <div class="evidence-box">
+                  <p style="margin:0;color:var(--muted);font-size:13px">已覆盖示例企业官网、公开招采入口与主流行业媒体；搜索摘要未作为证据，未尝试绕过登录或付费墙。</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="report-section" id="alternatives">
+              <h2>竞品、替代方案与异议准备</h2>
+              <div class="finding" data-claim="CLM-014">
+                <div class="finding-head"><div><div class="claim-id">CLM-014 · 分析判断</div><h3>最需要比较的可能是现有工作方式，而不是单一同类产品</h3></div><span class="badge info">INFERENCE</span></div>
+                <p>潜在替代包括人工咨询熟悉业务的同事、门户关键词检索，以及在协作平台内维护 FAQ。第一次交流应询问这些路径的实际时间成本与失败方式。</p>
+                <div class="inference-note"><strong>异议准备：</strong> 若客户认为“现有搜索已经够用”，不要先争论模型效果；先验证跨系统检索、答案出处和内容更新是否构成真实问题。</div>
+              </div>
+            </section>
+
+            <section class="report-section" id="risks">
+              <h2>风险、冲突与信息缺口</h2>
+              <p>目前没有发现必须阻断整份报告的来源冲突；仍有 3 个问题只能部分回答。任何关于预算、采购阶段和内部系统现状的具体表述，都应在会议中确认。</p>
+            </section>
+
+            <section class="report-section" id="questions">
+              <h2>首次会议验证问题</h2>
+              <ol style="margin:0;padding-left:22px">
+                <li>目前遇到知识查找问题最多的是哪些角色？他们现在如何解决？</li>
+                <li>答案是否必须展示来源、更新时间与责任人？错误答案会带来什么风险？</li>
+                <li>本次交流是在探索方向、验证方案，还是已经对应明确项目？</li>
+              </ol>
+            </section>
+
+            <section class="report-section" id="ledger">
+              <h2>证据台账</h2>
+              <p style="color:var(--muted)">正式实现中，此处列出 Source、Evidence、Claim、定位信息、来源级别、时效状态与支持关系。本原型只展示信息结构。</p>
+            </section>
+          </article>
+
+          <aside class="review-panel">
+            <div class="review-summary">
+              <div class="panel-label">HIGH-IMPACT REVIEW</div>
+              <div class="review-count"><span id="reviewedCount">1</span> / 4</div>
+              <div class="review-copy">全部高影响 Claim 接受或驳回后，本版本才会标记为 REVIEWED。</div>
+            </div>
+            <div class="selected-claim">
+              <div class="panel-label">当前选中</div>
+              <h3 id="selectedClaimTitle">CLM-007 · 知识管理建设方向</h3>
+              <div class="segmented" role="group" aria-label="审阅状态">
+                <button class="seg-button accept" data-review="accept">接受</button>
+                <button class="seg-button review active" data-review="review">待核实</button>
+                <button class="seg-button reject" data-review="reject">驳回</button>
+              </div>
+              <textarea class="note-area" id="claimNote" placeholder="添加个人批注；批注会绑定当前报告版本与 Claim。"></textarea>
+              <div class="review-buttons">
+                <button class="button small" id="saveNote">保存批注</button>
+                <button class="button small primary" id="openFollowup">针对该项补充调研</button>
+              </div>
+            </div>
+            <div class="version-note">当前报告 v1。若补充调研改变结论或关键证据，原审阅状态将失效，新版转为待核实。</div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="page" data-page-view="history">
+        <div class="content-wide">
+          <div class="history-head">
+            <div>
+              <div class="eyebrow">Local Run Archive</div>
+              <h1 class="page-title">历史调研与报告版本</h1>
+              <p class="page-lead">每次调研作为自包含本地运行包保存。旧版本与审阅记录不会被补充调研静默覆盖。</p>
+            </div>
+            <div class="history-filter"><label for="historySearch">查找运行</label><input id="historySearch" placeholder="按客户、主题或 run_id 搜索"></div>
+          </div>
+
+          <div class="history-table" id="historyTable">
+            <div class="history-row header"><div>调研主题</div><div>最近更新</div><div>运行终态</div><div>审阅状态</div><div>报告版本</div></div>
+            <div class="history-row" data-search="澄川智造 首次交流 demo-20260910-001">
+              <div><div class="history-title">澄川智造 · 首次交流准备</div><div class="history-sub">demo-20260910-001</div></div><div>今天 14:32</div><div><span class="badge success">COMPLETED</span></div><div><span class="badge warning">IN_REVIEW</span></div><div class="version-stack"><span class="version-pill">v1</span><button class="open-run" data-page-jump="report">打开</button></div>
+            </div>
+            <div class="history-row" data-search="北岸零售 行业概况 demo-20260908-003">
+              <div><div class="history-title">北岸零售 · 行业与替代方案</div><div class="history-sub">demo-20260908-003 · 演示记录</div></div><div>9 月 8 日</div><div><span class="badge warning">PARTIAL</span></div><div><span class="badge neutral">UNREVIEWED</span></div><div class="version-stack"><span class="version-pill">v1</span><span class="version-pill">v2</span><button class="open-run" data-page-jump="report">打开</button></div>
+            </div>
+            <div class="history-row" data-search="远帆科技 竞品准备 demo-20260905-002">
+              <div><div class="history-title">远帆科技 · 竞品异议准备</div><div class="history-sub">demo-20260905-002 · 演示记录</div></div><div>9 月 5 日</div><div><span class="badge success">COMPLETED</span></div><div><span class="badge success">REVIEWED</span></div><div class="version-stack"><span class="version-pill">v1</span><button class="open-run" data-page-jump="report">打开</button></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="followupModal" role="dialog" aria-modal="true" aria-labelledby="followupTitle">
+    <div class="modal">
+      <div class="eyebrow">Incremental Research</div>
+      <h2 id="followupTitle">针对 CLM-007 补充调研</h2>
+      <p>本次操作只重跑该 Claim 及其依赖范围。新证据会进入统一证据池，并生成不可变的新报告版本。</p>
+      <div class="field"><label for="followupInstruction">补充说明</label><textarea id="followupInstruction" placeholder="例如：优先查找过去 12 个月的官方材料，并确认该方向是否已有公开项目。"></textarea></div>
+      <div class="modal-actions"><button class="button" id="closeFollowup">取消</button><button class="button primary" id="startFollowup">创建 v2 补充调研</button></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const pageMeta = {
+      new: { crumb: '工作台 / <strong>新建调研</strong>', statuses: '' },
+      run: { crumb: '调研运行 / <strong>澄川智造 · 首次交流准备</strong>', statuses: '<span class="badge info">RUNNING</span>' },
+      report: { crumb: '调研运行 / <strong>澄川智造 · 首次交流准备</strong>', statuses: '<span class="badge success">COMPLETED</span><span class="badge warning">IN_REVIEW</span>' },
+      history: { crumb: '工作台 / <strong>历史记录</strong>', statuses: '' }
+    };
+
+    function showPage(name) {
+      document.querySelectorAll('[data-page-view]').forEach(page => page.classList.toggle('active', page.dataset.pageView === name));
+      document.querySelectorAll('.nav-button').forEach(button => button.classList.toggle('active', button.dataset.page === name));
+      document.getElementById('breadcrumb').innerHTML = pageMeta[name].crumb;
+      document.getElementById('topStatus').innerHTML = pageMeta[name].statuses;
+      document.querySelector('[data-export]').style.visibility = name === 'report' ? 'visible' : 'hidden';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function toast(message) {
+      const el = document.getElementById('toast');
+      el.textContent = message;
+      el.classList.add('show');
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+    }
+
+    document.querySelectorAll('.nav-button').forEach(button => button.addEventListener('click', () => showPage(button.dataset.page)));
+    document.querySelectorAll('[data-page-jump]').forEach(button => button.addEventListener('click', () => showPage(button.dataset.pageJump)));
+
+    document.getElementById('briefForm').addEventListener('submit', event => {
+      event.preventDefault();
+      toast('Research Brief 已确认，进入运行详情（原型模拟）');
+      setTimeout(() => showPage('run'), 450);
+    });
+
+    document.querySelectorAll('.evidence-toggle').forEach(button => {
+      button.addEventListener('click', () => {
+        const box = button.nextElementSibling;
+        const open = box.classList.toggle('open');
+        button.setAttribute('aria-expanded', String(open));
+        button.textContent = open ? '收起证据与来源' : (button.closest('[data-claim]').dataset.claim === 'CLM-010' ? '查看搜索边界' : '展开证据与来源');
+      });
+    });
+
+    document.querySelectorAll('.finding[data-claim]').forEach(finding => {
+      finding.addEventListener('click', event => {
+        if (event.target.closest('button')) return;
+        document.querySelectorAll('.finding').forEach(item => item.style.outline = 'none');
+        finding.style.outline = '2px solid rgba(154,73,52,.28)';
+        finding.style.outlineOffset = '6px';
+        const title = finding.querySelector('h3').textContent;
+        document.getElementById('selectedClaimTitle').textContent = `${finding.dataset.claim} · ${title}`;
+      });
+    });
+
+    document.querySelectorAll('[data-review]').forEach(button => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('[data-review]').forEach(item => item.classList.remove('active'));
+        button.classList.add('active');
+        const labels = { accept: '已接受：该 Claim 将保留在正式报告中', review: '已标记待核实：导出时会醒目标注', reject: '已驳回：正式正文排除，审计历史保留' };
+        toast(labels[button.dataset.review]);
+        document.getElementById('reviewedCount').textContent = button.dataset.review === 'review' ? '1' : '2';
+      });
+    });
+
+    document.getElementById('saveNote').addEventListener('click', () => {
+      const note = document.getElementById('claimNote').value.trim();
+      toast(note ? '批注已绑定到 v1 / 当前 Claim（原型模拟）' : '请先输入批注内容');
+    });
+
+    const followupModal = document.getElementById('followupModal');
+    document.getElementById('openFollowup').addEventListener('click', () => followupModal.classList.add('open'));
+    document.getElementById('closeFollowup').addEventListener('click', () => followupModal.classList.remove('open'));
+    document.getElementById('startFollowup').addEventListener('click', () => {
+      followupModal.classList.remove('open');
+      toast('已创建局部补充调研，完成后将生成 v2（原型模拟）');
+    });
+    followupModal.addEventListener('click', event => { if (event.target === followupModal) followupModal.classList.remove('open'); });
+
+    document.querySelectorAll('[data-source]').forEach(button => button.addEventListener('click', () => toast('这是示例来源，正式产品将在新标签页打开原始网页并定位证据')));
+    document.querySelector('[data-export]').addEventListener('click', () => toast('正在导出 v1 Markdown；文件将保留运行与审阅状态（原型模拟）'));
+    document.getElementById('cancelRun').addEventListener('click', () => toast('取消前将提示影响并保存当前检查点（原型模拟）'));
+    document.getElementById('partialRun').addEventListener('click', () => { toast('停止扩展搜索，准备生成可信 PARTIAL（原型模拟）'); setTimeout(() => showPage('report'), 650); });
+
+    document.getElementById('historySearch').addEventListener('input', event => {
+      const query = event.target.value.trim().toLowerCase();
+      document.querySelectorAll('.history-row[data-search]').forEach(row => {
+        row.style.display = row.dataset.search.toLowerCase().includes(query) ? 'grid' : 'none';
+      });
+    });
+
+    showPage('report');
+  </script>
+</body>
+</html>
