@@ -21,9 +21,6 @@ dependencies = [
     "typer>=0.16,<1",
 ]
 
-[project.scripts]
-sales-research = "sales_research_agent.cli:app"
-
 [dependency-groups]
 dev = [
     "mypy>=1.17,<2",
@@ -38,6 +35,7 @@ packages = ["src/sales_research_agent"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = '-m "not live"'
 markers = ["live: tests that require external network access or API keys"]
 
 [tool.ruff]

@@ -85,8 +85,10 @@ docs/poc/
 - Create: `src/sales_research_agent/__init__.py`
 - Create: `src/sales_research_agent/config.py`
 - Create: `tests/unit/test_config.py`
+- Create: `tests/live/test_live_marker.py`
 - Modify: `.gitignore`
 - Modify: `README.md`
+- 本阶段不注册命令入口；CLI 创建于 Task 9，避免在 `cli.py` 尚不存在时安装出必然崩溃的命令。
 
 - [ ] **Step 1: 只创建工程元数据并安装锁定依赖**
 
@@ -114,9 +116,6 @@ dependencies = [
   "typer>=0.16,<1",
 ]
 
-[project.scripts]
-sales-research = "sales_research_agent.cli:app"
-
 [dependency-groups]
 dev = [
   "mypy>=1.17,<2",
@@ -132,6 +131,7 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = '-m "not live"'
 markers = ["live: requires real network and provider credentials"]
 
 [tool.ruff]
@@ -780,6 +780,7 @@ git commit -m "feat: compile traceable dual format reports"
 - Create: `tests/unit/test_cli.py`
 - Modify: `tests/fakes.py`
 - Modify: `tests/conftest.py`
+- Modify: `pyproject.toml`
 
 - [ ] **Step 1: 写正常 Graph 路由测试**
 
@@ -862,6 +863,8 @@ sales-research inspect --run-id RUN_ID_FROM_RUN_COMMAND
 ```
 
 `run` 默认离线拒绝真实 Provider；`--live` 触发 Settings Key 校验。`resume` 不接收新的 Brief。`inspect` 只读取状态与安全统计，不输出 Key 和完整模型请求。
+
+CLI 创建完成后，在 `pyproject.toml` 增加 `[project.scripts]`，注册 `sales-research = "sales_research_agent.cli:app"` 入口。
 
 - [ ] **Step 6: 运行测试并提交**
 
