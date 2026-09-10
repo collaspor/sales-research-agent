@@ -53,3 +53,31 @@ async def test_publish_failure_keeps_active_report_artifacts_unchanged(
     }
     assert after == before
     assert len(await repository.list_report_versions("run-1")) == 1
+
+
+@pytest.mark.asyncio
+async def test_report_version_persistence_failure_restores_active_artifacts(
+    monkeypatch: pytest.MonkeyPatch, repository, report_model: ReportModel, tmp_path: Path
+) -> None:
+    artifacts = ArtifactStore(tmp_path / "artifacts")
+    publisher = ReportPublisher(artifacts, repository)
+    await publisher.publish("run-1", report_model)
+    before = {
+        path.name: path.read_bytes()
+        for path in (tmp_path / "artifacts" / "run-1" / "reports").iterdir()
+    }
+
+    async def fail_version(*args: object, **kwargs: object) -> str:
+        raise OSError("模拟版本登记失败")
+
+    monkeypatch.setattr(repository, "upsert_report_version", fail_version)
+    changed_report = report_model.model_copy(update={"summary": "新的摘要不应成为 active 版本。"})
+
+    with pytest.raises(OSError, match="模拟版本登记失败"):
+        await publisher.publish("run-1", changed_report)
+
+    after = {
+        path.name: path.read_bytes()
+        for path in (tmp_path / "artifacts" / "run-1" / "reports").iterdir()
+    }
+    assert after == before
