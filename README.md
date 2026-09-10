@@ -20,6 +20,7 @@
 - [领域模型与节点契约](docs/domain-model-and-node-contracts.md)
 - [技术设计自审摘要](docs/technical-design-review-summary.md)
 - [项目开发复盘与面试讲解](docs/project-development-retrospective-and-interview-guide.txt)
+- [阶段 0：POC 风险验证规格](docs/superpowers/specs/2026-09-10-risk-validation-poc-design.md)
 
 ## 交互原型
 
