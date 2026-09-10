@@ -730,7 +730,7 @@ git commit -m "feat: build evidence to claim pipeline"
 - Create: `tests/integration/test_report_artifacts.py`
 - Modify: `tests/conftest.py`
 
-- [ ] **Step 1: 写同源一致性和 HTML 转义测试**
+- [x] **Step 1: 写同源一致性和 HTML 转义测试**
 
 ```python
 def extract_ids(payload: str, kind: str) -> set[str]:
@@ -750,20 +750,20 @@ def test_html_escapes_untrusted_source_text(malicious_report_model) -> None:
     assert "&lt;script&gt;" in html
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 Run: `uv run pytest tests/unit/test_report_compiler.py -q`
 Expected: FAIL。
 
-- [ ] **Step 3: 实现 ReportModel 和确定性编译器**
+- [x] **Step 3: 实现 ReportModel 和确定性编译器**
 
 ReportModel 固定字段为声明、摘要、facts、recent_changes、inferences、questions、gaps、failures、sources、evidence_index、stats，并对 ReportModel 及其嵌套模型设置 `ConfigDict(frozen=True)`。编译器不调用模型，只排序、分组、编号、转义和渲染。`tests/conftest.py` 创建含一个批准 Fact、一个 Evidence 和一个 Source 的最小 `report_model` fixture，以及 Fact 文本为 `<script>alert(1)</script>` 的 `malicious_report_model` fixture；Markdown 与 HTML 均输出不可见或可见的 `data-claim-id`、`data-evidence-id` 标记供一致性检查。
 
-- [ ] **Step 4: 实现原子报告发布**
+- [x] **Step 4: 实现原子报告发布**
 
 先写 `report-model.json`、临时 Markdown 和临时 HTML；三者均成功后原子替换正式路径并创建 ReportVersion。新版本失败不能覆盖既有 active version。
 
-- [ ] **Step 5: 运行测试并提交**
+- [x] **Step 5: 运行测试并提交**
 
 Run: `uv run pytest tests/unit/test_report_compiler.py tests/integration/test_report_artifacts.py -q`
 Expected: PASS。
