@@ -229,10 +229,10 @@ report_outcome
 started_at
 deadline_at
 failure_ids
-current_source_id
 ```
 
 正文、原始模型响应、HTML 和完整报告不得进入 Graph State。
+`current_source_id` 是 `Send` 提供给单个来源分支的局部输入，不写入全局 Graph State。
 
 ## 11. 领域与文件持久化
 

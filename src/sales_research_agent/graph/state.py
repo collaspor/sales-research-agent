@@ -22,7 +22,6 @@ class PocState(TypedDict):
     failure_ids: Annotated[list[str], merge_unique]
     report_version_id: NotRequired[str | None]
     execution_status: str
-    report_outcome: str
+    report_outcome: NotRequired[str | None]
     started_at: str
     deadline_at: str
-    current_source_id: NotRequired[str]

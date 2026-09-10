@@ -330,11 +330,12 @@ class PocState(TypedDict):
     failure_ids: Annotated[list[str], merge_unique]
     report_version_id: NotRequired[str | None]
     execution_status: str
-    report_outcome: str
+    report_outcome: NotRequired[str | None]
     started_at: str
     deadline_at: str
-    current_source_id: NotRequired[str]
 ```
+
+`current_source_id` 由 `Send` 作为单来源分支的局部输入提供，不属于全局 `PocState`。
 
 - [ ] **Step 4: 运行测试、类型检查并提交**
 
