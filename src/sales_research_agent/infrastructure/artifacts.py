@@ -4,6 +4,7 @@ import hashlib
 import os
 import tempfile
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -58,6 +59,63 @@ class ArtifactStore:
     ) -> ArtifactRef:
         return self.write_bytes(run_id, relative_path, content.encode("utf-8"), media_type)
 
+    def publish_text_bundle(
+        self,
+        run_id: str,
+        contents: Mapping[str, tuple[str, str]],
+    ) -> dict[str, ArtifactRef]:
+        """仅在全部临时文件写完后替换一组正式报告制品。"""
+        encoded = {
+            relative_path: (content.encode("utf-8"), media_type)
+            for relative_path, (content, media_type) in contents.items()
+        }
+        targets = {
+            relative_path: self._resolve_target(run_id, relative_path)
+            for relative_path in encoded
+        }
+        temporary_paths: dict[str, Path] = {}
+        backups: dict[str, Path] = {}
+        replaced: list[str] = []
+        try:
+            for relative_path, target in targets.items():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                temporary_paths[relative_path] = self._write_temporary(target, encoded[relative_path][0])
+            for relative_path, target in targets.items():
+                if target.exists():
+                    backup = target.with_name(f".{target.name}.{uuid.uuid4().hex}.bak")
+                    target.replace(backup)
+                    backups[relative_path] = backup
+                temporary_paths[relative_path].replace(target)
+                replaced.append(relative_path)
+        except Exception:
+            for relative_path in reversed(replaced):
+                target = targets[relative_path]
+                if target.exists():
+                    target.unlink()
+            for relative_path, backup in backups.items():
+                backup.replace(targets[relative_path])
+            raise
+        finally:
+            for temporary_path in temporary_paths.values():
+                if temporary_path.exists():
+                    temporary_path.unlink()
+            for backup in backups.values():
+                if backup.exists():
+                    backup.unlink()
+
+        return {
+            relative_path: ArtifactRef(
+                id=str(uuid.uuid4()),
+                run_id=run_id,
+                relative_path=targets[relative_path].relative_to(self._root).as_posix(),
+                sha256=hashlib.sha256(content).hexdigest(),
+                media_type=media_type,
+                size_bytes=len(content),
+                created_at=datetime.now(UTC),
+            )
+            for relative_path, (content, media_type) in encoded.items()
+        }
+
     def read_bytes(self, reference: ArtifactRef) -> bytes:
         return self._resolve_reference(reference).read_bytes()
 
@@ -69,6 +127,21 @@ class ArtifactStore:
         if not run_id or path.is_absolute() or ".." in path.parts:
             raise ValueError("relative path must remain within the artifact root")
         return self._ensure_within_root(self._root / run_id / path)
+
+    @staticmethod
+    def _write_temporary(target: Path, content: bytes) -> Path:
+        file_descriptor, temporary_name = tempfile.mkstemp(suffix=".tmp", dir=target.parent)
+        temporary_path = Path(temporary_name)
+        try:
+            with os.fdopen(file_descriptor, "wb") as temporary_file:
+                temporary_file.write(content)
+                temporary_file.flush()
+                os.fsync(temporary_file.fileno())
+        except Exception:
+            if temporary_path.exists():
+                temporary_path.unlink()
+            raise
+        return temporary_path
 
     def _resolve_reference(self, reference: ArtifactRef) -> Path:
         path = Path(reference.relative_path)

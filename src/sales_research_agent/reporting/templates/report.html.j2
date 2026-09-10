@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>调研报告</title>
+  </head>
+  <body>
+    <main>
+      <h1>调研报告</h1>
+      <section><h2>声明</h2><p>{{ report.declaration }}</p></section>
+      <section><h2>执行摘要</h2><p>{{ report.summary }}</p></section>
+      <section>
+        <h2>客户公开事实</h2>
+        <ul>{% for item in facts %}
+          <li data-claim-id="{{ item.claim_id }}">{{ item.text }}{% if item.evidence_ids %}<ul>{% for evidence_id in item.evidence_ids | sort %}<li data-evidence-id="{{ evidence_id }}">证据：{{ evidence_id }}</li>{% endfor %}</ul>{% endif %}</li>
+        {% endfor %}</ul>
+      </section>
+      <section>
+        <h2>近期公开变化</h2>
+        <ul>{% for item in recent_changes %}
+          <li data-claim-id="{{ item.claim_id }}">{{ item.text }}{% if item.evidence_ids %}<ul>{% for evidence_id in item.evidence_ids | sort %}<li data-evidence-id="{{ evidence_id }}">证据：{{ evidence_id }}</li>{% endfor %}</ul>{% endif %}</li>
+        {% endfor %}</ul>
+      </section>
+      <section>
+        <h2>基于事实的需求假设</h2>
+        <ul>{% for item in inferences %}
+          <li data-claim-id="{{ item.claim_id }}"><strong>推断：</strong>{{ item.text }}{% if item.upstream_claim_ids %}<ul><li>上游 Claim：{{ item.upstream_claim_ids | sort | join(', ') }}</li></ul>{% endif %}</li>
+        {% endfor %}</ul>
+      </section>
+      <section>
+        <h2>首次交流验证问题</h2>
+        <ul>{% for item in questions %}
+          <li data-claim-id="{{ item.claim_id }}">{{ item.text }}</li>
+        {% endfor %}</ul>
+      </section>
+      <section><h2>信息缺口</h2><ul>{% for item in gaps %}<li><code>{{ item.code }}</code>：{{ item.description }}</li>{% endfor %}</ul></section>
+      <section><h2>失败来源</h2><ul>{% for item in failures %}<li><code>{{ item.code }}</code>：{{ item.message }}</li>{% endfor %}</ul></section>
+      <section><h2>来源</h2><ul>{% for item in sources %}<li><code>{{ item.source_id }}</code>：<a href="{{ item.url }}">{{ item.title }}</a></li>{% endfor %}</ul></section>
+      <section><h2>证据索引</h2><ol>{% for item in evidence_index %}<li data-evidence-id="{{ item.evidence_id }}">{{ item.quote }}（来源：{{ item.source_id }}）</li>{% endfor %}</ol></section>
+      <section><h2>本次运行统计</h2><ul><li>成功来源：{{ report.stats.sources_succeeded }}</li><li>失败来源：{{ report.stats.sources_failed }}</li><li>已批准 Claim：{{ report.stats.claims_approved }}</li></ul></section>
+    </main>
+  </body>
+</html>
