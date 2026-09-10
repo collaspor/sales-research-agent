@@ -90,7 +90,7 @@ docs/poc/
 - Modify: `README.md`
 - 本阶段不注册命令入口；CLI 创建于 Task 9，避免在 `cli.py` 尚不存在时安装出必然崩溃的命令。
 
-- [ ] **Step 1: 只创建工程元数据并安装锁定依赖**
+- [x] **Step 1: 只创建工程元数据并安装锁定依赖**
 
 先创建 `pyproject.toml`、`.python-version`、`.env.example`、`src/sales_research_agent/__init__.py`，并更新 `.gitignore` 与 README；此时不要创建 `config.py`。
 
@@ -149,7 +149,7 @@ packages = ["sales_research_agent"]
 Run: `uv lock && uv sync --locked`
 Expected: 生成 `uv.lock` 与项目内 `.venv`，依赖同步成功。
 
-- [ ] **Step 2: 写配置失败测试**
+- [x] **Step 2: 写配置失败测试**
 
 ```python
 # tests/unit/test_config.py
@@ -171,12 +171,12 @@ def test_offline_settings_do_not_require_provider_keys() -> None:
     assert settings.max_concurrency == 3
 ```
 
-- [ ] **Step 3: 运行测试并确认 RED**
+- [x] **Step 3: 运行测试并确认 RED**
 
 Run: `uv run pytest tests/unit/test_config.py -q`
 Expected: FAIL，`sales_research_agent.config` 不存在。
 
-- [ ] **Step 4: 创建最小配置实现**
+- [x] **Step 4: 创建最小配置实现**
 
 `src/sales_research_agent/config.py` 使用：
 
@@ -210,17 +210,17 @@ class Settings(BaseSettings):
         return self
 ```
 
-- [ ] **Step 5: 运行 GREEN**
+- [x] **Step 5: 运行 GREEN**
 
 Run: `uv run pytest tests/unit/test_config.py -q`
 Expected: 2 passed。
 
-- [ ] **Step 6: 验证导入无副作用**
+- [x] **Step 6: 验证导入无副作用**
 
 Run: `uv run python -c "import sales_research_agent; print('import-ok')"`
 Expected: `import-ok`，且未创建 `var/`、未访问网络、未要求 Key。
 
-- [ ] **Step 7: 质量检查并提交**
+- [x] **Step 7: 质量检查并提交**
 
 Run: `uv run ruff check . && uv run mypy src`
 Expected: 两项均通过。
