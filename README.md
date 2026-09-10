@@ -19,6 +19,7 @@
 - [能力迁移与目标架构](docs/capability-migration-and-target-architecture.md)
 - [领域模型与节点契约](docs/domain-model-and-node-contracts.md)
 - [技术设计自审摘要](docs/technical-design-review-summary.md)
+- [项目开发复盘与面试讲解](docs/project-development-retrospective-and-interview-guide.txt)
 
 ## 交互原型
 
@@ -27,4 +28,3 @@
 ## 下一步
 
 开展风险验证型 POC，跑通“输入背景 → 生成计划 → 公网搜索与抓取 → 提取事实和证据 → 引用核验 → Markdown/HTML 报告”的最小纵向闭环，再依据实测结果冻结 MVP 技术方案并拆分正式交付阶段。
-
