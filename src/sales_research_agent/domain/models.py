@@ -6,6 +6,7 @@ from typing import Annotated, Literal, Self
 from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 
 UppercaseValue = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z_]*$")]
+FailureCode = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z0-9_]*$")]
 
 
 class DomainModel(BaseModel):
@@ -132,7 +133,7 @@ class Failure(DomainModel):
     id: str
     run_id: str
     operation: str
-    code: UppercaseValue
+    code: FailureCode
     retryable: bool
     message: str
     related_entity_id: str

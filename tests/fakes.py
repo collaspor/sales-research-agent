@@ -49,6 +49,10 @@ class FixtureTransport(httpx.MockTransport):
         self.calls: list[httpx.Request] = []
         super().__init__(self._handle)
 
+    def queue_response(self, response: httpx.Response) -> None:
+        """向受控传输追加一个按顺序返回的响应。"""
+        self._responses.append(response)
+
     def _handle(self, request: httpx.Request) -> httpx.Response:
         self.calls.append(request)
         if not self._responses:
