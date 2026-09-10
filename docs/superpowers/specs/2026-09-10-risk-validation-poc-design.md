@@ -229,6 +229,7 @@ report_outcome
 started_at
 deadline_at
 failure_ids
+current_source_id
 ```
 
 正文、原始模型响应、HTML 和完整报告不得进入 Graph State。
@@ -376,7 +377,7 @@ Brief 校验、URL 规范化与去重、私网 URL 拒绝、quote 定位、关�
 | DeepSeek 核验 | 拒绝不支持、矛盾和数字改写样例 | 隔离上下文或引入第二模型 |
 | 引用定位 | 定位与数字保护通过 | 迁移项目 A 更完整算法 |
 | LangGraph fan-out | 合并无覆盖、丢失或重复 | 调整 reducer 和节点粒度 |
-| SQLite Checkpointer | 恢复正确且无重复副作用 | 锁版本或调整 Saver |
+| SQLite Checkpointer | 恢复正确且无重复副作用；并行分支的最终完成集合正确，跨分支列表顺序不作为契约 | 锁版本或调整 Saver |
 | 30 分钟预算 | 在预算内可信结报 | 收紧问题、来源与调用上限 |
 | HTML 报告 | 可完整阅读并快速回查 Evidence | 调整模型与模板 |
 
