@@ -79,39 +79,69 @@ class ReportPublisher:
     async def publish(self, run_id: str, report: ReportModel) -> ReportVersion:
         """原子替换三份报告文件，并在其后持久化 active ReportVersion。"""
         report_version_id = str(uuid4())
-        published = self._artifacts.publish_text_bundle(
-            run_id,
-            {
-                "reports/report-model.json": (
-                    report.model_dump_json(indent=2),
-                    "application/json; charset=utf-8",
-                ),
-                "reports/report.md": (compile_markdown(report), "text/markdown; charset=utf-8"),
-                "reports/report.html": (compile_html(report), "text/html; charset=utf-8"),
-            },
-        )
-        report_model_ref = published["reports/report-model.json"]
-        markdown_ref = published["reports/report.md"]
-        html_ref = published["reports/report.html"]
-        for reference in (report_model_ref, markdown_ref, html_ref):
-            await self._repository.upsert_artifact_ref(
-                reference, f"{run_id}:report-artifact:{report_version_id}:{reference.relative_path}"
+        previous_contents = await self._read_active_contents(run_id)
+        try:
+            published = self._artifacts.publish_text_bundle(
+                run_id,
+                {
+                    "reports/report-model.json": (
+                        report.model_dump_json(indent=2),
+                        "application/json; charset=utf-8",
+                    ),
+                    "reports/report.md": (compile_markdown(report), "text/markdown; charset=utf-8"),
+                    "reports/report.html": (compile_html(report), "text/html; charset=utf-8"),
+                },
             )
+            report_model_ref = published["reports/report-model.json"]
+            markdown_ref = published["reports/report.md"]
+            html_ref = published["reports/report.html"]
+            for reference in (report_model_ref, markdown_ref, html_ref):
+                await self._repository.upsert_artifact_ref(
+                    reference, f"{run_id}:report-artifact:{report_version_id}:{reference.relative_path}"
+                )
 
-        version = ReportVersion(
-            id=report_version_id,
-            run_id=run_id,
-            created_at=datetime.now(UTC),
-            report_model_artifact_id=report_model_ref.id,
-            markdown_artifact_id=markdown_ref.id,
-            html_artifact_id=html_ref.id,
-            status="PUBLISHED",
-            is_active=True,
-        )
-        await self._repository.upsert_report_version(
-            version, f"{run_id}:report-version:{report_version_id}"
-        )
+            version = ReportVersion(
+                id=report_version_id,
+                run_id=run_id,
+                created_at=datetime.now(UTC),
+                report_model_artifact_id=report_model_ref.id,
+                markdown_artifact_id=markdown_ref.id,
+                html_artifact_id=html_ref.id,
+                status="PUBLISHED",
+                is_active=True,
+            )
+            await self._repository.upsert_report_version(
+                version, f"{run_id}:report-version:{report_version_id}"
+            )
+        except Exception:
+            if previous_contents:
+                self._artifacts.publish_text_bundle(run_id, previous_contents)
+            raise
         return version
+
+    async def _read_active_contents(self, run_id: str) -> dict[str, tuple[str, str]]:
+        """在发布前保留 active 报告，供领域登记失败时回滚。"""
+        active_versions = [
+            version for version in await self._repository.list_report_versions(run_id) if version.is_active
+        ]
+        if not active_versions:
+            return {}
+        active_version = max(active_versions, key=lambda version: version.created_at)
+        references = (
+            await self._repository.get_artifact_ref(active_version.report_model_artifact_id),
+            await self._repository.get_artifact_ref(active_version.markdown_artifact_id),
+            await self._repository.get_artifact_ref(active_version.html_artifact_id),
+        )
+        if any(reference is None for reference in references):
+            return {}
+        return {
+            Path(reference.relative_path).relative_to(run_id).as_posix(): (
+                self._artifacts.read_text(reference),
+                reference.media_type,
+            )
+            for reference in references
+            if reference is not None
+        }
 
 
 async def publish_report(
