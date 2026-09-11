@@ -85,10 +85,12 @@ docs/poc/
 - Create: `src/sales_research_agent/__init__.py`
 - Create: `src/sales_research_agent/config.py`
 - Create: `tests/unit/test_config.py`
+- Create: `tests/live/test_live_marker.py`
 - Modify: `.gitignore`
 - Modify: `README.md`
+- 本阶段不注册命令入口；CLI 创建于 Task 9，避免在 `cli.py` 尚不存在时安装出必然崩溃的命令。
 
-- [ ] **Step 1: 只创建工程元数据并安装锁定依赖**
+- [x] **Step 1: 只创建工程元数据并安装锁定依赖**
 
 先创建 `pyproject.toml`、`.python-version`、`.env.example`、`src/sales_research_agent/__init__.py`，并更新 `.gitignore` 与 README；此时不要创建 `config.py`。
 
@@ -114,9 +116,6 @@ dependencies = [
   "typer>=0.16,<1",
 ]
 
-[project.scripts]
-sales-research = "sales_research_agent.cli:app"
-
 [dependency-groups]
 dev = [
   "mypy>=1.17,<2",
@@ -132,6 +131,7 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = '-m "not live"'
 markers = ["live: requires real network and provider credentials"]
 
 [tool.ruff]
@@ -149,7 +149,7 @@ packages = ["sales_research_agent"]
 Run: `uv lock && uv sync --locked`
 Expected: 生成 `uv.lock` 与项目内 `.venv`，依赖同步成功。
 
-- [ ] **Step 2: 写配置失败测试**
+- [x] **Step 2: 写配置失败测试**
 
 ```python
 # tests/unit/test_config.py
@@ -171,12 +171,12 @@ def test_offline_settings_do_not_require_provider_keys() -> None:
     assert settings.max_concurrency == 3
 ```
 
-- [ ] **Step 3: 运行测试并确认 RED**
+- [x] **Step 3: 运行测试并确认 RED**
 
 Run: `uv run pytest tests/unit/test_config.py -q`
 Expected: FAIL，`sales_research_agent.config` 不存在。
 
-- [ ] **Step 4: 创建最小配置实现**
+- [x] **Step 4: 创建最小配置实现**
 
 `src/sales_research_agent/config.py` 使用：
 
@@ -210,17 +210,17 @@ class Settings(BaseSettings):
         return self
 ```
 
-- [ ] **Step 5: 运行 GREEN**
+- [x] **Step 5: 运行 GREEN**
 
 Run: `uv run pytest tests/unit/test_config.py -q`
 Expected: 2 passed。
 
-- [ ] **Step 6: 验证导入无副作用**
+- [x] **Step 6: 验证导入无副作用**
 
 Run: `uv run python -c "import sales_research_agent; print('import-ok')"`
 Expected: `import-ok`，且未创建 `var/`、未访问网络、未要求 Key。
 
-- [ ] **Step 7: 质量检查并提交**
+- [x] **Step 7: 质量检查并提交**
 
 Run: `uv run ruff check . && uv run mypy src`
 Expected: 两项均通过。
@@ -235,75 +235,78 @@ git commit -m "build: initialize poc project"
 **Files:**
 - Create: `src/sales_research_agent/graph/state.py`
 - Create: `tests/integration/test_checkpoint_compatibility.py`
+- Create: `tests/integration/checkpoint_compatibility_child.py`
 
-- [ ] **Step 1: 写最小持久化和 pending writes 测试**
+- [x] **Step 1: 写最小持久化和 pending writes 测试**
 
 ```python
 # tests/integration/test_checkpoint_compatibility.py
+import json
+import os
 from pathlib import Path
-from typing import Annotated, TypedDict
+import subprocess
+import sys
 
 import pytest
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langgraph.graph import END, START, StateGraph
 
 
-def append(values: list[str], update: list[str]) -> list[str]:
-    return list(dict.fromkeys([*values, *update]))
-
-
-class State(TypedDict):
-    completed: Annotated[list[str], append]
-
-
-@pytest.mark.asyncio
-async def test_async_sqlite_saver_keeps_successful_pending_writes(
+def test_async_sqlite_saver_recovers_pending_writes_after_process_restart(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("LANGGRAPH_STRICT_MSGPACK", "true")
-    calls = {"successful": 0, "failing": 0, "join": 0}
+    database_path = tmp_path / "checkpoint.sqlite3"
+    calls_path = tmp_path / "calls.json"
 
-    async def successful(_: State) -> dict[str, list[str]]:
-        calls["successful"] += 1
-        return {"completed": ["successful"]}
+    crash = _run_checkpoint_child("crash", database_path, calls_path)
+    assert crash["strict_msgpack"] is True
+    assert crash["successful_pending_write_seen"] is True
+    assert crash["calls"] == {"successful": 1, "failing": 1, "join": 0}
 
-    async def failing(_: State) -> dict[str, list[str]]:
-        calls["failing"] += 1
-        if calls["failing"] == 1:
-            raise RuntimeError("injected crash")
-        return {"completed": ["failing"]}
+    resumed = _run_checkpoint_child("resume", database_path, calls_path)
+    assert resumed["strict_msgpack"] is True
+    assert set(resumed["completed"]) == {"successful", "failing", "join"}
+    assert len(resumed["completed"]) == len(set(resumed["completed"]))
+    assert resumed["calls"] == {"successful": 1, "failing": 2, "join": 1}
 
-    async def join(_: State) -> dict[str, list[str]]:
-        calls["join"] += 1
-        return {"completed": ["join"]}
 
-    builder = StateGraph(State)
-    builder.add_node("successful", successful)
-    builder.add_node("failing", failing)
-    builder.add_node("join", join)
-    builder.add_edge(START, "successful")
-    builder.add_edge(START, "failing")
-    builder.add_edge(["successful", "failing"], "join")
-    builder.add_edge("join", END)
-    config = {"configurable": {"thread_id": "checkpoint-test"}}
-
-    async with AsyncSqliteSaver.from_conn_string(str(tmp_path / "checkpoint.sqlite3")) as saver:
-        graph = builder.compile(checkpointer=saver)
-        with pytest.raises(RuntimeError, match="injected crash"):
-            await graph.ainvoke({"completed": []}, config=config)
-        result = await graph.ainvoke(None, config=config)
-
-    assert set(result["completed"]) == {"successful", "failing", "join"}
-    assert calls == {"successful": 1, "failing": 2, "join": 1}
+def _run_checkpoint_child(mode: str, database_path: Path, calls_path: Path) -> dict[str, object]:
+    environment = os.environ.copy()
+    environment["LANGGRAPH_STRICT_MSGPACK"] = "true"
+    process = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).with_name("checkpoint_compatibility_child.py")),
+            mode,
+            str(database_path),
+            str(calls_path),
+        ],
+        capture_output=True,
+        check=False,
+        env=environment,
+        text=True,
+    )
+    assert process.returncode == 0, process.stderr
+    return json.loads(process.stdout)
 ```
 
-- [ ] **Step 2: 运行并确认实际兼容结果**
+`checkpoint_compatibility_child.py` 在导入任意 LangGraph 模块前由父测试设置
+`LANGGRAPH_STRICT_MSGPACK=true`，并直接检查 `STRICT_MSGPACK_ENABLED`。它以两个独立
+进程运行：`crash` 模式在 `successful` 的 pending write 可通过
+`AsyncSqliteSaver.aget_tuple()` 读取后注入异常，退出 `async with` 关闭 Saver，并把调用数
+写入临时 `calls.json`；`resume` 模式重新打开同一 SQLite 数据库、重新编译 `StateGraph`，再
+以 `ainvoke(None)` 恢复。两个模式均使用真实 `AsyncSqliteSaver`，从而验证跨进程恢复不会重跑
+已经成功的分支。
+
+- [x] **Step 2: 运行并确认实际兼容结果**
 
 Run: `uv run pytest tests/integration/test_checkpoint_compatibility.py -q`
-Expected: 测试在当前锁定依赖上通过。如果失败，只允许依据官方 API 调整 Saver 初始化或 resume 调用，并把差异记录在规格“决策门”中。
+Expected: `crash` 进程的 pending write 已落盘且调用数为 `successful:1/failing:1/join:0`；关闭
+Saver 后，`resume` 进程重开 Saver 并重新编译图，最终调用数为 `successful:1/failing:2/join:1`，
+`completed` 包含三个节点且没有重复。如果失败，只允许依据官方 API 调整 Saver 初始化或 resume
+调用，并把差异记录在规格“决策门”中。
 
-- [ ] **Step 3: 定义可序列化 POC State**
+- [x] **Step 3: 定义可序列化 POC State**
 
 ```python
 # src/sales_research_agent/graph/state.py
@@ -330,13 +333,14 @@ class PocState(TypedDict):
     failure_ids: Annotated[list[str], merge_unique]
     report_version_id: NotRequired[str | None]
     execution_status: str
-    report_outcome: str
+    report_outcome: NotRequired[str | None]
     started_at: str
     deadline_at: str
-    current_source_id: NotRequired[str]
 ```
 
-- [ ] **Step 4: 运行测试、类型检查并提交**
+`current_source_id` 由 `Send` 作为单来源分支的局部输入提供，不属于全局 `PocState`。
+
+- [x] **Step 4: 运行测试、类型检查并提交**
 
 Run: `uv run pytest tests/integration/test_checkpoint_compatibility.py -q && uv run mypy src`
 Expected: PASS。
@@ -358,7 +362,7 @@ git commit -m "test: validate sqlite checkpoint recovery"
 - Create: `tests/integration/test_sqlite_repository.py`
 - Create: `tests/integration/test_artifact_store.py`
 
-- [ ] **Step 1: 写 lineage 与幂等失败测试**
+- [x] **Step 1: 写 lineage 与幂等失败测试**
 
 ```python
 def test_fact_requires_evidence_id() -> None:
@@ -390,12 +394,12 @@ async def test_repository_upsert_is_idempotent(repository: SQLiteRepository) -> 
     assert len(await repository.list_sources("run-1")) == 1
 ```
 
-- [ ] **Step 2: 运行并确认 RED**
+- [x] **Step 2: 运行并确认 RED**
 
 Run: `uv run pytest tests/unit/test_domain_models.py tests/integration/test_sqlite_repository.py -q`
 Expected: FAIL，领域类型和 Repository 尚不存在。
 
-- [ ] **Step 3: 实现领域类型和 Repository port**
+- [x] **Step 3: 实现领域类型和 Repository port**
 
 使用 Pydantic 定义以下最小字段，不增加 POC 未使用的可选字段：
 
@@ -421,7 +425,7 @@ ArtifactRef: id, run_id, relative_path, sha256, media_type, size_bytes, created_
 
 `DomainRepository` 明确定义 `initialize()`；为 Source、SourceRevision、DocumentBlock、Evidence、Claim、Verification、Gap、Failure、ReportVersion、ArtifactRef 分别定义 `upsert_*`、`get_*` 和按 run 查询方法；另定义 `append_audit_event()`、`save_stats()`、`count_source_revisions()`、`has_duplicate_operation_keys()`。每个 `upsert_*` 都接收实体与 `operation_key`。测试 fixture 在 `tests/conftest.py` 为每个测试创建独立临时数据库并调用 `initialize()`；调用方不能执行裸 SQL。
 
-- [ ] **Step 4: 实现最小 SQLite schema 和幂等写入**
+- [x] **Step 4: 实现最小 SQLite schema 和幂等写入**
 
 Repository 初始化必须执行：
 
@@ -433,7 +437,7 @@ PRAGMA busy_timeout = 5000;
 
 每张表存储稳定 ID、`run_id`、JSON payload 和 `operation_key UNIQUE`。单次 upsert 使用短事务；重复 operation key 返回既有实体 ID。
 
-- [ ] **Step 5: 写 Artifact 原子写入测试和实现**
+- [x] **Step 5: 写 Artifact 原子写入测试和实现**
 
 ```python
 def test_artifact_store_writes_content_and_hash(tmp_path: Path) -> None:
@@ -445,7 +449,7 @@ def test_artifact_store_writes_content_and_hash(tmp_path: Path) -> None:
 
 `ArtifactStore.write_bytes/write_text` 写入同目录临时文件，flush 后用 `Path.replace()` 原子替换，并返回包含相对路径、SHA-256、media type 和大小的 `ArtifactRef`。
 
-- [ ] **Step 6: 运行测试并提交**
+- [x] **Step 6: 运行测试并提交**
 
 Run: `uv run pytest tests/unit/test_domain_models.py tests/integration/test_sqlite_repository.py tests/integration/test_artifact_store.py -q`
 Expected: PASS。
@@ -465,7 +469,7 @@ git commit -m "feat: add traceable domain persistence"
 - Create: `tests/unit/test_numeric_guard.py`
 - Create: `tests/unit/test_quality_gate.py`
 
-- [ ] **Step 1: 写 exact/normalized 和数字改写失败测试**
+- [x] **Step 1: 写 exact/normalized 和数字改写失败测试**
 
 ```python
 def test_normalized_locator_returns_original_offsets() -> None:
@@ -484,18 +488,18 @@ def test_numeric_guard_rejects_changed_percentage() -> None:
     assert result.reason == "NUMERIC_MISMATCH"
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 Run: `uv run pytest tests/unit/test_quote_locator.py tests/unit/test_numeric_guard.py -q`
 Expected: FAIL，定位与保护函数不存在。
 
-- [ ] **Step 3: 实现最小算法**
+- [x] **Step 3: 实现最小算法**
 
 `locate_quote` 先 exact `str.find`；再构建“删除 Unicode 空白并统一常见全角标点”的规范化字符流，同时保存规范化索引到原始索引的映射，返回原文 start/end。POC 不实现 fuzzy matching。
 
 `compare_critical_tokens` 用编译正则提取百分比、金额、日期、四位年份及带单位数字，并要求候选 quote 的 token multiset 是定位原文对应 token 的相等集合。
 
-- [ ] **Step 4: 写质量门禁测试和实现**
+- [x] **Step 4: 写质量门禁测试和实现**
 
 ```python
 @pytest.mark.parametrize("decision", ["UNSUPPORTED", "PARTIALLY_SUPPORTED", "CONTRADICTED"])
@@ -511,7 +515,7 @@ def test_fact_without_evidence_is_rejected() -> None:
 
 `decide_claim` 的顺序固定为定位 → 数字 → 语义；只有 FACT 的三个条件全通过才批准。Inference 和 Question 使用单独分支，不能被误计入外部 Fact。
 
-- [ ] **Step 5: 运行测试并提交**
+- [x] **Step 5: 运行测试并提交**
 
 Run: `uv run pytest tests/unit/test_quote_locator.py tests/unit/test_numeric_guard.py tests/unit/test_quality_gate.py -q`
 Expected: PASS。
@@ -533,7 +537,7 @@ git commit -m "feat: enforce deterministic citation gate"
 - Create: `tests/unit/test_deepseek_provider.py`
 - Create: `tests/fakes.py`
 
-- [ ] **Step 1: 写 Provider 契约失败测试**
+- [x] **Step 1: 写 Provider 契约失败测试**
 
 ```python
 @pytest.mark.asyncio
@@ -552,18 +556,18 @@ async def test_deepseek_retries_one_empty_json_response() -> None:
     assert provider.call_count == 2
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 Run: `uv run pytest tests/unit/test_tavily_provider.py tests/unit/test_deepseek_provider.py -q`
 Expected: FAIL，Provider 类型不存在。
 
-- [ ] **Step 3: 实现 ports**
+- [x] **Step 3: 实现 ports**
 
 `SearchProvider` 暴露 `search(query, max_results) -> list[SearchResult]`。`ResearchModel` 暴露 `plan`、`extract_evidence`、`synthesize_claims`、`verify_support`。所有返回值为 Pydantic 模型，不把 SDK/HTTP 原始对象泄露给 Graph。
 
 `tests/fakes.py` 提供 `FixtureTransport`、`SequenceChatModel`、`FakeSearchProvider`、`FakeResearchModel` 和 `FakeFetcher`。Fake 按显式队列返回结果，并记录调用参数；不得根据生产实现内部细节生成结果。
 
-- [ ] **Step 4: 实现 Tavily HTTP adapter**
+- [x] **Step 4: 实现 Tavily HTTP adapter**
 
 使用注入的 `httpx.AsyncClient` POST `https://api.tavily.com/search`，请求固定：
 
@@ -579,11 +583,11 @@ Expected: FAIL，Provider 类型不存在。
 
 把 401/403 分类为配置错误，429/5xx/timeout 分类为可重试错误，其他 4xx 分类为永久请求错误。任何异常消息不得包含 header 或 key。
 
-- [ ] **Step 5: 实现 DeepSeek adapter**
+- [x] **Step 5: 实现 DeepSeek adapter**
 
 使用 `ChatOpenAI(model=settings.deepseek_model, base_url=settings.deepseek_base_url, api_key=SecretStr(settings.deepseek_api_key))`。请求加入 JSON system instruction、具体 Schema 示例和 `response_format={"type": "json_object"}`；用目标 Pydantic 模型执行 `model_validate_json`。空内容或 Schema 错误只修正 1 次，并保存脱敏调用统计。
 
-- [ ] **Step 6: 运行测试并提交**
+- [x] **Step 6: 运行测试并提交**
 
 Run: `uv run pytest tests/unit/test_tavily_provider.py tests/unit/test_deepseek_provider.py -q`
 Expected: PASS，测试不访问公网。
@@ -605,7 +609,7 @@ git commit -m "feat: add bounded search and model adapters"
 - Create: `tests/fault_injection/test_network_failures.py`
 - Modify: `tests/conftest.py`
 
-- [ ] **Step 1: 写 URL 拒绝测试**
+- [x] **Step 1: 写 URL 拒绝测试**
 
 ```python
 @pytest.mark.parametrize(
@@ -617,14 +621,14 @@ def test_url_policy_rejects_non_public_targets(url: str) -> None:
         validate_public_url(url)
 ```
 
-- [ ] **Step 2: 运行 RED，随后实现 URL 策略**
+- [x] **Step 2: 运行 RED，随后实现 URL 策略**
 
 Run: `uv run pytest tests/unit/test_url_policy.py -q`
 Expected: FAIL。
 
 实现仅允许 http/https，拒绝用户名密码、localhost 和 `ipaddress.ip_address(host)` 判定的非 global literal IP。域名解析后的每个地址也必须为 global；每次 redirect 都重新调用策略。
 
-- [ ] **Step 3: 写摄取与局部失败测试**
+- [x] **Step 3: 写摄取与局部失败测试**
 
 ```python
 @pytest.mark.asyncio
@@ -640,11 +644,11 @@ async def test_one_404_returns_failure_instead_of_raising(run_store) -> None:
     assert result.failure.code == "HTTP_404"
 ```
 
-- [ ] **Step 4: 实现 Fetcher 与 Trafilatura Extractor**
+- [x] **Step 4: 实现 Fetcher 与 Trafilatura Extractor**
 
 Fetcher 构造函数注入 `httpx.AsyncClient` 与 `UrlPolicy`。测试中的 UrlPolicy 注入 resolver，把 `fixture.test` 解析为 global 地址 `93.184.216.34`，HTTP client 使用 `httpx.MockTransport`，生产代码不增加 `allow_test_host` 开关。`tests/conftest.py` 的 `run_store` fixture 组合临时 Artifact Store、SQLite Repository、MockTransport 和该 UrlPolicy。Fetcher 使用总重定向上限 5、连接/读取超时、8 MiB 响应上限和 HTML content-type allowlist。重试只覆盖 timeout、429 和 5xx，总尝试不超过 3。Extractor 调用 `trafilatura.extract(raw_html, url=final_url, output_format="txt", include_comments=False, include_tables=True)`；空文本返回 `EMPTY_CONTENT`。
 
-- [ ] **Step 5: 运行测试并提交**
+- [x] **Step 5: 运行测试并提交**
 
 Run: `uv run pytest tests/unit/test_url_policy.py tests/integration/test_html_ingestion.py tests/fault_injection/test_network_failures.py -q`
 Expected: PASS。
@@ -662,7 +666,7 @@ git commit -m "feat: add bounded html ingestion"
 - Create: `tests/integration/test_evidence_claim_pipeline.py`
 - Create: `tests/fault_injection/test_model_failures.py`
 
-- [ ] **Step 1: 写端到端领域链失败测试**
+- [x] **Step 1: 写端到端领域链失败测试**
 
 ```python
 @pytest.mark.asyncio
@@ -693,20 +697,20 @@ async def test_pipeline_rejects_model_quote_not_present_in_source(pipeline) -> N
     assert result.gap_ids
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 Run: `uv run pytest tests/integration/test_evidence_claim_pipeline.py -q`
 Expected: FAIL，应用服务不存在。
 
-- [ ] **Step 3: 实现 `ResearchPipeline`**
+- [x] **Step 3: 实现 `ResearchPipeline`**
 
 `tests/fakes.py` 为 `FakeResearchModel` 增加 `queue_evidence()`、`queue_claim()`、`queue_verification()`，并提供显式调用计数。`ResearchPipeline` 按以下固定顺序执行并逐步写 Repository：读取 DocumentBlock → 调模型提议 Evidence → 确定性定位与数字检查 → 保存 Evidence → 调模型生成 Claim → 对 Fact 调语义核验 → 保存 Verification → 调质量门禁 → 保存 Gap/批准状态。每次模型原始响应先经 secret redactor，再写 `model_responses/`。
 
-- [ ] **Step 4: 增加模型失败收敛测试**
+- [x] **Step 4: 增加模型失败收敛测试**
 
 覆盖空响应后成功、连续两次 Schema 错误、核验 Provider 超时三种情况。连续失败产生结构化 Failure/Gap，不允许生成未经核验 Fact。
 
-- [ ] **Step 5: 运行测试并提交**
+- [x] **Step 5: 运行测试并提交**
 
 Run: `uv run pytest tests/integration/test_evidence_claim_pipeline.py tests/fault_injection/test_model_failures.py -q`
 Expected: PASS。
@@ -726,7 +730,7 @@ git commit -m "feat: build evidence to claim pipeline"
 - Create: `tests/integration/test_report_artifacts.py`
 - Modify: `tests/conftest.py`
 
-- [ ] **Step 1: 写同源一致性和 HTML 转义测试**
+- [x] **Step 1: 写同源一致性和 HTML 转义测试**
 
 ```python
 def extract_ids(payload: str, kind: str) -> set[str]:
@@ -746,20 +750,20 @@ def test_html_escapes_untrusted_source_text(malicious_report_model) -> None:
     assert "&lt;script&gt;" in html
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 Run: `uv run pytest tests/unit/test_report_compiler.py -q`
 Expected: FAIL。
 
-- [ ] **Step 3: 实现 ReportModel 和确定性编译器**
+- [x] **Step 3: 实现 ReportModel 和确定性编译器**
 
 ReportModel 固定字段为声明、摘要、facts、recent_changes、inferences、questions、gaps、failures、sources、evidence_index、stats，并对 ReportModel 及其嵌套模型设置 `ConfigDict(frozen=True)`。编译器不调用模型，只排序、分组、编号、转义和渲染。`tests/conftest.py` 创建含一个批准 Fact、一个 Evidence 和一个 Source 的最小 `report_model` fixture，以及 Fact 文本为 `<script>alert(1)</script>` 的 `malicious_report_model` fixture；Markdown 与 HTML 均输出不可见或可见的 `data-claim-id`、`data-evidence-id` 标记供一致性检查。
 
-- [ ] **Step 4: 实现原子报告发布**
+- [x] **Step 4: 实现原子报告发布**
 
 先写 `report-model.json`、临时 Markdown 和临时 HTML；三者均成功后原子替换正式路径并创建 ReportVersion。新版本失败不能覆盖既有 active version。
 
-- [ ] **Step 5: 运行测试并提交**
+- [x] **Step 5: 运行测试并提交**
 
 Run: `uv run pytest tests/unit/test_report_compiler.py tests/integration/test_report_artifacts.py -q`
 Expected: PASS。
@@ -780,8 +784,9 @@ git commit -m "feat: compile traceable dual format reports"
 - Create: `tests/unit/test_cli.py`
 - Modify: `tests/fakes.py`
 - Modify: `tests/conftest.py`
+- Modify: `pyproject.toml`
 
-- [ ] **Step 1: 写正常 Graph 路由测试**
+- [x] **Step 1: 写正常 Graph 路由测试**
 
 ```python
 @pytest.mark.asyncio
@@ -792,7 +797,7 @@ async def test_graph_builds_report_from_approved_claims(poc_harness) -> None:
     assert result["report_version_id"]
 ```
 
-- [ ] **Step 2: 写 fan-out 局部失败测试**
+- [x] **Step 2: 写 fan-out 局部失败测试**
 
 ```python
 @pytest.mark.asyncio
@@ -811,7 +816,7 @@ async def test_source_fanout_respects_configured_concurrency(poc_harness) -> Non
     assert poc_harness.fetcher.peak_concurrency <= 3
 ```
 
-- [ ] **Step 3: 运行 RED 并实现 Graph**
+- [x] **Step 3: 运行 RED 并实现 Graph**
 
 Run: `uv run pytest tests/integration/test_poc_graph.py -q`
 Expected: FAIL。
@@ -834,7 +839,7 @@ return [
 
 `ingest_source` 只读取这三个字段并返回父 State 已声明的 reducer 字段。来源列表 reducer 稳定去重；Graph 通过 closure 注入 `Services(repository, artifacts, search, model, fetcher, clock)`，不把 client 放进 State。`PocHarness.run(max_concurrency=3)` 和 CLI 都把 `RunnableConfig(configurable={"thread_id": run_id}, max_concurrency=settings.max_concurrency)` 传入 `ainvoke`，从运行时限制 fan-out 并发。`tests/fakes.py` 定义 `PocHarness`，负责创建临时 run 目录、Fake Providers、真实 SQLite Repository、真实 Artifact Store 和真实 Checkpointer；可追踪 Fetcher 记录活动请求数与峰值并发。`tests/conftest.py` 暴露 `poc_harness` 与 `crash_harness` fixture。创建 Checkpointer 前，runtime 根据 `Settings.langgraph_strict_msgpack` 设置 `LANGGRAPH_STRICT_MSGPACK=true`，并用测试确认 State 只包含允许的基础类型。
 
-- [ ] **Step 4: 写并实现恢复测试**
+- [x] **Step 4: 写并实现恢复测试**
 
 ```python
 @pytest.mark.asyncio
@@ -851,7 +856,7 @@ async def test_resume_does_not_duplicate_completed_source_revision(crash_harness
 
 使用真实 `AsyncSqliteSaver`，在部分 ingest 分支成功后让一个分支抛出一次硬失败；同一 `thread_id` 以 `ainvoke(None, config)` 恢复，并检查 pending writes 与领域幂等。
 
-- [ ] **Step 5: 实现 CLI 行为**
+- [x] **Step 5: 实现 CLI 行为**
 
 Typer 命令：
 
@@ -863,7 +868,9 @@ sales-research inspect --run-id RUN_ID_FROM_RUN_COMMAND
 
 `run` 默认离线拒绝真实 Provider；`--live` 触发 Settings Key 校验。`resume` 不接收新的 Brief。`inspect` 只读取状态与安全统计，不输出 Key 和完整模型请求。
 
-- [ ] **Step 6: 运行测试并提交**
+CLI 创建完成后，在 `pyproject.toml` 增加 `[project.scripts]`，注册 `sales-research = "sales_research_agent.cli:app"` 入口。
+
+- [x] **Step 6: 运行测试并提交**
 
 Run: `uv run pytest tests/integration/test_poc_graph.py tests/fault_injection/test_graph_recovery.py tests/unit/test_cli.py -q`
 Expected: PASS。
@@ -884,7 +891,7 @@ git commit -m "feat: orchestrate recoverable poc graph"
 - Create: `docs/poc/decision-record-template.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: 创建不含预置答案的案例**
+- [x] **Step 1: 创建不含预置答案的案例**
 
 ```json
 {
@@ -898,11 +905,11 @@ git commit -m "feat: orchestrate recoverable poc graph"
 }
 ```
 
-- [ ] **Step 2: 写离线全链测试**
+- [x] **Step 2: 写离线全链测试**
 
 离线端到端使用固定 Provider fixture 和本地 HTML，断言产生 domain/checkpoint 两个数据库、raw/clean artifact、ReportModel、Markdown、HTML、统计，并验证报告只包含批准 Claim。
 
-- [ ] **Step 3: 写密钥泄漏测试**
+- [x] **Step 3: 写密钥泄漏测试**
 
 ```python
 @pytest.mark.asyncio
@@ -917,17 +924,17 @@ async def test_run_tree_does_not_contain_provider_keys(run_tree: Path, monkeypat
 
 `tests/fakes.py` 的异步 `execute_offline_run(run_tree)` 使用 Task 9 的 PocHarness 执行完整 Fake Graph；`run_tree` fixture 指向该测试独立的临时目录。它不能读取开发机环境中的真实 Provider Key。
 
-- [ ] **Step 4: 运行完整离线回归**
+- [x] **Step 4: 运行完整离线回归**
 
 Run: `uv run pytest -m "not live" -q && uv run ruff check . && uv run mypy src`
 Expected: 全部通过，零 warning/traceback。
 
-- [ ] **Step 5: 扫描 Git 跟踪内容**
+- [x] **Step 5: 扫描 Git 跟踪内容**
 
 Run: `git status --short && git grep -n -E "tvly-[A-Za-z0-9_-]+|sk-[A-Za-z0-9_-]{16,}" -- ':!uv.lock'`
 Expected: 第一条只显示本任务预期文件；第二条无输出。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```powershell
 git add evals tests docs/poc README.md
@@ -942,23 +949,23 @@ git commit -m "test: add offline poc acceptance suite"
 - Create after review, using the actual execution date: `docs/poc/YYYY-MM-DD-poc-decision-record.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: 先执行 Provider 冒烟测试**
+- [x] **Step 1: 先执行 Provider 冒烟测试**
 
 从现有本地环境安全注入 `TAVILY_API_KEY` 与 `DEEPSEEK_API_KEY`，命令不得回显值。
 
 Run: `uv run sales-research run --case evals/cases/haier_first_meeting.json --live`
 Expected: 启动时输出 run_id；在 30 分钟内进入终态或输出可诊断的 Provider 决策失败。不得使用旧项目代码执行流程。
 
-- [ ] **Step 2: 检查运行结构**
+- [x] **Step 2: 检查运行结构**
 
 Run: `uv run sales-research inspect --run-id $RUN_ID`，其中 `$RUN_ID` 是 Step 1 命令输出后由执行者显式赋值的 PowerShell 变量。
 Expected: 显示状态、耗时、搜索/HTTP/模型次数、来源成功失败数、Claim 决策数和报告路径，不显示密钥。
 
-- [ ] **Step 3: 人工逐条审阅全部外部 Fact**
+- [x] **Step 3: 人工逐条审阅全部外部 Fact**
 
 在 review 文档为每条 Fact 记录：Claim ID、报告文本、Source URL、Evidence quote、原文是否可定位、是否完整支持、关键数字是否一致、人工结论和备注。POC Fact 数量小，必须全量审阅，不抽样。
 
-- [ ] **Step 4: 执行 live 后回归与泄漏扫描**
+- [x] **Step 4: 执行 live 后回归与泄漏扫描**
 
 Run: `uv run pytest -m "not live" -q`
 Expected: PASS。
@@ -969,11 +976,11 @@ Expected: `var/` 不出现；只出现准备提交的审阅文档与 README 更�
 Run: `git grep -n -E "tvly-[A-Za-z0-9_-]+|sk-[A-Za-z0-9_-]{16,}" -- ':!uv.lock'`
 Expected: 无输出。
 
-- [ ] **Step 5: 填写逐项决策记录**
+- [x] **Step 5: 填写逐项决策记录**
 
 对 Tavily、静态 HTML、DeepSeek 抽取、DeepSeek 核验、引用定位、LangGraph fan-out、SQLite Checkpointer、30 分钟预算和 HTML 报告分别给出 `KEEP/CHANGE/DEFER`，每项引用运行证据，不写笼统“POC 成功”。
 
-- [ ] **Step 6: 更新 README 并提交 POC 证据**
+- [x] **Step 6: 更新 README 并提交 POC 证据**
 
 README 只写实际运行日期、案例、终态、测试命令和可证明指标。未经通过的能力继续标为设计或待验证。
 
@@ -982,7 +989,7 @@ git add docs/poc README.md
 git commit -m "docs: record live poc findings"
 ```
 
-- [ ] **Step 7: 密钥轮换提醒**
+- [x] **Step 7: 密钥轮换提醒**
 
 在交付说明中提醒用户轮换曾粘贴到对话中的 Tavily Key。轮换是用户账户操作，不由测试或应用代码自动执行。
 

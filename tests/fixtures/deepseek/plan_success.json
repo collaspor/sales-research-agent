@@ -1,0 +1,10 @@
+{
+  "questions": [
+    {
+      "text": "海尔智家的公开业务与战略重点是什么？",
+      "purpose": "建立客户公开背景。",
+      "preferred_source_types": ["OFFICIAL"],
+      "completion_criteria": "至少有一个可定位的官方来源。"
+    }
+  ]
+}

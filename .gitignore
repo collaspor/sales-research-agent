@@ -8,6 +8,8 @@ __pycache__/
 
 # 环境变量与密钥
 .env
+.venv/
+var/
 .env.*
 !.env.example
 
@@ -24,4 +26,3 @@ logs/
 .vscode/
 .DS_Store
 Thumbs.db
-

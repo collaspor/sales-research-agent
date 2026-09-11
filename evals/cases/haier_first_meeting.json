@@ -1,0 +1,9 @@
+{
+  "customer_name": "海尔智家",
+  "scenario": "模拟首次客户技术交流",
+  "known_context": "仅使用公开互联网信息；不代表客户存在任何模拟需求。",
+  "research_goal": "形成客户公开背景、近期变化、需求假设和会议验证问题",
+  "max_questions": 4,
+  "max_sources": 6,
+  "deadline_minutes": 30
+}
