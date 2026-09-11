@@ -47,4 +47,11 @@ uv run sales-research run --case evals/cases/haier_first_meeting.json --live
 
 运行完成后使用 `sales-research inspect --run-id <run_id>` 查看脱敏汇总，并按审阅模板逐条核对全部外部 Fact。密钥不得提交到版本库、运行制品、日志或审阅文档。
 
+MVP 公开案例包括海尔智家和比亚迪：
+
+```powershell
+uv run sales-research run --case evals/cases/haier_first_meeting.json --live
+uv run sales-research run --case evals/cases/byd_first_meeting.json --live
+```
+
 来源等级通过 `OFFICIAL_HOSTS` 与 `TRUSTED_SECONDARY_HOSTS` 可选配置（Pydantic tuple 使用 JSON 数组格式），用于排序和报告提示，不要求每次启动都维护域名。无论是否配置，报告都会展示来源网页、标题、URL 和证据原文；未命中的域名保持为 `UNCLASSIFIED`，由售前工程师在阅读时自行判断是否为官方网站。
