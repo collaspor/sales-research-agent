@@ -5,7 +5,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from sales_research_agent.domain.models import Brief, DocumentBlock, Evidence, ResearchQuestion
+from sales_research_agent.domain.models import (
+    Brief,
+    DocumentBlock,
+    Evidence,
+    ResearchQuestion,
+    UppercaseValue,
+)
 
 
 class ProviderModel(BaseModel):
@@ -29,7 +35,7 @@ class PlannedQuestion(ProviderModel):
 
     text: str
     purpose: str
-    preferred_source_types: list[str]
+    preferred_source_types: list[UppercaseValue]
     completion_criteria: str
 
 

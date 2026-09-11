@@ -41,6 +41,35 @@ async def test_deepseek_retries_one_empty_json_response() -> None:
 
 
 @pytest.mark.asyncio
+async def test_deepseek_retries_plan_with_non_domain_source_type_values() -> None:
+    client = SequenceChatModel(
+        [
+            (
+                '{"questions":[{"text":"海尔智家的战略重点是什么？",'
+                '"purpose":"建立公开背景。",'
+                '"preferred_source_types":["公司官网","年度报告"],'
+                '"completion_criteria":"至少有一个可定位的官方来源。"}]}'
+            ),
+            _plan_json(),
+        ]
+    )
+    provider = DeepSeekProvider(client=client)
+    brief = Brief(
+        id="brief-1",
+        run_id="run-1",
+        customer_name="海尔智家",
+        scenario="首次交流",
+        known_context="公开信息调研",
+        research_goal="准备首次交流问题",
+    )
+
+    plan = await provider.plan(brief)
+
+    assert plan.questions[0].preferred_source_types == ["OFFICIAL"]
+    assert provider.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_deepseek_exposes_structured_minimal_contracts_for_research_steps() -> None:
     client = SequenceChatModel(
         [
