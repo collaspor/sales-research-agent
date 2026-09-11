@@ -17,7 +17,7 @@ from sales_research_agent.reporting.models import (
     ReportSource,
     ReportStats,
 )
-from tests.fakes import FixtureTransport
+from tests.fakes import FixtureTransport, PocHarness
 
 
 @dataclass(slots=True)
@@ -107,3 +107,23 @@ def malicious_report_model(report_model: ReportModel) -> ReportModel:
             )
         }
     )
+
+
+@pytest.fixture
+async def poc_harness(tmp_path: Path) -> PocHarness:
+    harness = PocHarness(tmp_path)
+    await harness.initialize()
+    try:
+        yield harness
+    finally:
+        await harness.close()
+
+
+@pytest.fixture
+async def crash_harness(tmp_path: Path) -> PocHarness:
+    harness = PocHarness(tmp_path, crash_once=True)
+    await harness.initialize()
+    try:
+        yield harness
+    finally:
+        await harness.close()

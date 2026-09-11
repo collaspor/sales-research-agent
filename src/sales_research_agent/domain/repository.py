@@ -5,12 +5,14 @@ from typing import TypeVar
 
 from sales_research_agent.domain.models import (
     ArtifactRef,
+    Brief,
     Claim,
     DocumentBlock,
     Evidence,
     Failure,
     Gap,
     ReportVersion,
+    ResearchQuestion,
     RunStats,
     Source,
     SourceRevision,
@@ -19,6 +21,8 @@ from sales_research_agent.domain.models import (
 
 Entity = TypeVar(
     "Entity",
+    Brief,
+    ResearchQuestion,
     Source,
     SourceRevision,
     DocumentBlock,
@@ -37,6 +41,23 @@ class DomainRepository(ABC):
 
     @abstractmethod
     async def initialize(self) -> None: ...
+
+    @abstractmethod
+    async def upsert_brief(self, entity: Brief, operation_key: str) -> str: ...
+
+    @abstractmethod
+    async def get_brief(self, entity_id: str) -> Brief | None: ...
+
+    @abstractmethod
+    async def list_briefs(self, run_id: str) -> list[Brief]: ...
+
+    @abstractmethod
+    async def upsert_research_question(
+        self, entity: ResearchQuestion, operation_key: str
+    ) -> str: ...
+
+    @abstractmethod
+    async def get_research_question(self, entity_id: str) -> ResearchQuestion | None: ...
 
     @abstractmethod
     async def upsert_source(self, entity: Source, operation_key: str) -> str: ...

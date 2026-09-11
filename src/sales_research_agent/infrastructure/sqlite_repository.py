@@ -9,12 +9,14 @@ from pydantic import BaseModel
 
 from sales_research_agent.domain.models import (
     ArtifactRef,
+    Brief,
     Claim,
     DocumentBlock,
     Evidence,
     Failure,
     Gap,
     ReportVersion,
+    ResearchQuestion,
     RunStats,
     Source,
     SourceRevision,
@@ -42,6 +44,8 @@ class SQLiteRepository(DomainRepository):
     """每次操作打开短连接和短事务的 SQLite 仓储。"""
 
     _entity_types: ClassVar[dict[str, type[BaseModel]]] = {
+        "briefs": Brief,
+        "research_questions": ResearchQuestion,
         "sources": Source,
         "source_revisions": SourceRevision,
         "document_blocks": DocumentBlock,
@@ -96,6 +100,23 @@ class SQLiteRepository(DomainRepository):
                 """
             )
             await connection.commit()
+
+    async def upsert_brief(self, entity: Brief, operation_key: str) -> str:
+        return await self._upsert("briefs", entity, operation_key)
+
+    async def get_brief(self, entity_id: str) -> Brief | None:
+        return await self._get("briefs", entity_id, Brief)
+
+    async def list_briefs(self, run_id: str) -> list[Brief]:
+        return await self._list("briefs", run_id, Brief)
+
+    async def upsert_research_question(
+        self, entity: ResearchQuestion, operation_key: str
+    ) -> str:
+        return await self._upsert("research_questions", entity, operation_key)
+
+    async def get_research_question(self, entity_id: str) -> ResearchQuestion | None:
+        return await self._get("research_questions", entity_id, ResearchQuestion)
 
     async def upsert_source(self, entity: Source, operation_key: str) -> str:
         return await self._upsert("sources", entity, operation_key)

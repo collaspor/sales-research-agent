@@ -21,6 +21,9 @@ dependencies = [
     "typer>=0.16,<1",
 ]
 
+[project.scripts]
+sales-research = "sales_research_agent.cli:app"
+
 [dependency-groups]
 dev = [
     "mypy>=1.17,<2",

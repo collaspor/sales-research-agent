@@ -1,16 +1,26 @@
 """Provider 离线测试使用的显式队列 Fake。"""
 
+import asyncio
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TypeVar
 
 import httpx
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from sales_research_agent.domain.models import Brief, DocumentBlock, Evidence, ResearchQuestion
+from sales_research_agent.infrastructure.artifacts import ArtifactStore
+from sales_research_agent.infrastructure.sqlite_repository import SQLiteRepository
+from sales_research_agent.ingestion.fetcher import FetchFailure, FetchResult
 from sales_research_agent.providers.base import (
     ClaimCandidate,
     ClaimSynthesis,
+    EvidenceCandidate,
     EvidenceExtraction,
+    PlannedQuestion,
     ResearchModel,
     ResearchPlan,
     SearchProvider,
@@ -155,3 +165,169 @@ class FakeFetcher:
         if not self._responses:
             raise AssertionError("FakeFetcher response queue is empty")
         return self._responses.popleft()
+
+
+class TrackedFetcher:
+    """提供可控 HTML 响应，并记录 Graph fan-out 的实际并发度。"""
+
+    def __init__(self) -> None:
+        self._failed_urls: set[str] = set()
+        self.failure_source_callback: Callable[[str], None] | None = None
+        self.calls: list[str] = []
+        self.active = 0
+        self.peak_concurrency = 0
+        self._track_concurrency = False
+
+    def fail_for(self, url: str) -> None:
+        self._failed_urls.add(url)
+        if self.failure_source_callback is not None:
+            self.failure_source_callback(url)
+
+    def track_concurrency(self) -> None:
+        self._track_concurrency = True
+
+    async def fetch(self, url: str) -> FetchResult:
+        self.calls.append(url)
+        self.active += 1
+        self.peak_concurrency = max(self.peak_concurrency, self.active)
+        try:
+            if self._track_concurrency:
+                await asyncio.sleep(0.01)
+            if url in self._failed_urls:
+                return FetchResult(
+                    final_url=url,
+                    failure=FetchFailure("FETCH_NETWORK_ERROR", False, "controlled failure"),
+                )
+            return FetchResult(
+                final_url=url,
+                status_code=200,
+                body=b"<html><body><p>2025 year company published annual report.</p></body></html>",
+                content_type="text/html",
+            )
+        finally:
+            self.active -= 1
+
+
+class PocHarness:
+    """以真实本地持久化设施运行离线 Graph 的测试夹具。"""
+
+    def __init__(self, root: Path, *, crash_once: bool = False) -> None:
+        self.root = root
+        self.run_id = "run-poc"
+        self.repository = SQLiteRepository(root / "domain.sqlite3")
+        self.artifacts = ArtifactStore(root / "artifacts")
+        self.search = FakeSearchProvider()
+        self.model = FakeResearchModel()
+        self.fetcher = TrackedFetcher()
+        self.fetcher.failure_source_callback = self._include_failure_source
+        self.crash_once = crash_once
+        self.brief = Brief(
+            id="brief-poc", run_id=self.run_id, customer_name="Example Corp", scenario="presales",
+            known_context="public only", research_goal="verify public facts",
+        )
+        self._saver_context = AsyncSqliteSaver.from_conn_string(str(root / "checkpoint.sqlite3"))
+        self._saver: AsyncSqliteSaver | None = None
+
+    async def initialize(self) -> None:
+        await self.repository.initialize()
+        await self.repository.upsert_brief(self.brief, f"{self.run_id}:brief:{self.brief.id}")
+        self._saver = await self._saver_context.__aenter__()
+        self.search.queue_results(
+            [
+                SearchResult(url="https://example.com/ok", title="OK", snippet=""),
+            ]
+        )
+        if self.crash_once:
+            self._include_failure_source("https://example.com/fail")
+        self.model.queue_plan(
+            ResearchPlan(
+                questions=[
+                    PlannedQuestion(
+                        text="When was the annual report published?",
+                        purpose="verify public fact",
+                        preferred_source_types=["WEB"],
+                        completion_criteria="one approved fact",
+                    )
+                ]
+            )
+        )
+        self.model.queue_evidence(
+            EvidenceExtraction(
+                candidates=[
+                    EvidenceCandidate(
+                        document_block_id="source-0-block-0",
+                        quote="2025 year company published annual report.",
+                        rationale="direct quote",
+                    )
+                ]
+            )
+        )
+        self.model.queue_claims(
+            ClaimSynthesis(
+                claims=[
+                    ClaimCandidate(
+                        kind="FACT",
+                        text="The company published an annual report in 2025.",
+                        evidence_ids=["evidence-source-0-block-0-0"],
+                        upstream_claim_ids=[],
+                    )
+                ]
+            )
+        )
+        self.model.queue_verification(SupportVerification(decision="SUPPORTED", reason="direct"))
+
+    def _include_failure_source(self, url: str) -> None:
+        """仅在失败用例中向尚未消费的搜索结果追加第二个来源。"""
+        if self.search._responses:
+            self.search._responses[0].append(SearchResult(url=url, title="Fail", snippet=""))
+
+    async def close(self) -> None:
+        await self._saver_context.__aexit__(None, None, None)
+
+    async def run(self, *, max_concurrency: int = 3) -> dict[str, object]:
+        from sales_research_agent.graph.builder import Services, build_poc_graph
+
+        assert self._saver is not None
+        graph = build_poc_graph(
+            Services(
+                repository=self.repository,
+                artifacts=self.artifacts,
+                search=self.search,
+                model=self.model,
+                fetcher=self.fetcher,
+                clock=lambda: datetime.now(UTC),
+                max_sources=2,
+                crash_once=self.crash_once,
+            ),
+            self._saver,
+        )
+        state = {
+            "run_id": self.run_id,
+            "thread_id": self.run_id,
+            "brief_id": "brief-poc",
+            "research_question_ids": [], "source_ids": [], "successful_source_ids": [],
+            "failed_source_ids": [], "evidence_ids": [], "claim_ids": [],
+            "approved_claim_ids": [], "rejected_claim_ids": [], "gap_ids": [], "failure_ids": [],
+            "execution_status": "RUNNING", "started_at": datetime.now(UTC).isoformat(),
+            "deadline_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
+        }
+        effective_concurrency = 1 if self.crash_once else max_concurrency
+        return await graph.ainvoke(
+            state,
+            {"configurable": {"thread_id": self.run_id}, "max_concurrency": effective_concurrency},
+        )
+
+    async def resume(self, *, max_concurrency: int = 3) -> dict[str, object]:
+        from sales_research_agent.graph.builder import Services, build_poc_graph
+
+        assert self._saver is not None
+        graph = build_poc_graph(
+            Services(
+                repository=self.repository, artifacts=self.artifacts, search=self.search,
+                model=self.model, fetcher=self.fetcher, clock=lambda: datetime.now(UTC),
+                max_sources=2, crash_once=False,
+            ), self._saver,
+        )
+        return await graph.ainvoke(
+            None, {"configurable": {"thread_id": self.run_id}, "max_concurrency": max_concurrency}
+        )
