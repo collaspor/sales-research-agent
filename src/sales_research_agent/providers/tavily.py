@@ -1,11 +1,15 @@
 """Tavily 搜索 Provider 适配器。"""
 
+import asyncio
+
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from sales_research_agent.providers.base import SearchProvider, SearchResult
 
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
+MAX_ATTEMPTS = 3
+TAVILY_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=15.0, pool=15.0)
 
 
 class ProviderError(Exception):
@@ -55,7 +59,7 @@ class TavilySearchProvider(SearchProvider):
     ) -> None:
         if client is not None and transport is not None:
             raise ValueError("provide either client or transport, not both")
-        self._client = client or httpx.AsyncClient(transport=transport)
+        self._client = client or httpx.AsyncClient(transport=transport, timeout=TAVILY_TIMEOUT)
         self._owns_client = client is None
         self._api_key = api_key
         self.call_count = 0
@@ -66,8 +70,7 @@ class TavilySearchProvider(SearchProvider):
             await self._client.aclose()
 
     async def search(self, query: str, max_results: int) -> list[SearchResult]:
-        """执行单次受限 Tavily 查询并转换为候选来源。"""
-        self.call_count += 1
+        """在三次尝试预算内查询 Tavily 并转换为候选来源。"""
         payload = {
             "query": query,
             "search_depth": "advanced",
@@ -75,32 +78,41 @@ class TavilySearchProvider(SearchProvider):
             "include_answer": False,
             "include_raw_content": False,
         }
-        try:
-            response = await self._client.post(
-                TAVILY_SEARCH_URL,
-                json=payload,
-                headers={"Authorization": f"Bearer {self._api_key}"},
-            )
-        except httpx.TimeoutException as error:
-            raise ProviderRetriableError("tavily request timed out") from error
-        except httpx.RequestError as error:
-            raise ProviderRetriableError("tavily request failed") from error
-
-        self._raise_for_status(response.status_code)
-        try:
-            parsed = _TavilyPayload.model_validate(response.json())
-        except (ValidationError, ValueError) as error:
-            raise ProviderPermanentError("tavily returned an invalid response") from error
-        return [
-            SearchResult(
-                url=result.url,
-                title=result.title,
-                snippet=result.content,
-                score=result.score,
-                snippet_is_evidence=False,
-            )
-            for result in parsed.results
-        ]
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            self.call_count += 1
+            try:
+                response = await self._client.post(
+                    TAVILY_SEARCH_URL,
+                    json=payload,
+                    headers={"Authorization": f"Bearer {self._api_key}"},
+                )
+                self._raise_for_status(response.status_code)
+            except httpx.TimeoutException as error:
+                if attempt == MAX_ATTEMPTS:
+                    raise ProviderRetriableError("tavily request timed out") from error
+            except httpx.RequestError as error:
+                if attempt == MAX_ATTEMPTS:
+                    raise ProviderRetriableError("tavily request failed") from error
+            except ProviderRetriableError:
+                if attempt == MAX_ATTEMPTS:
+                    raise
+            else:
+                try:
+                    parsed = _TavilyPayload.model_validate(response.json())
+                except (ValidationError, ValueError) as error:
+                    raise ProviderPermanentError("tavily returned an invalid response") from error
+                return [
+                    SearchResult(
+                        url=result.url,
+                        title=result.title,
+                        snippet=result.content,
+                        score=result.score,
+                        snippet_is_evidence=False,
+                    )
+                    for result in parsed.results
+                ]
+            await asyncio.sleep(0)
+        raise RuntimeError("tavily retry loop did not complete")
 
     @staticmethod
     def _raise_for_status(status_code: int) -> None:

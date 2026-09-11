@@ -77,3 +77,63 @@ async def test_tavily_classifies_timeout_as_retriable() -> None:
 
     with pytest.raises(ProviderRetriableError):
         await provider.search("query", max_results=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["timeout", "rate_limit", "server_error"])
+async def test_tavily_retries_transient_failures_within_three_attempts(failure: str) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            if failure == "timeout":
+                raise httpx.ReadTimeout("timeout", request=request)
+            if failure == "rate_limit":
+                return httpx.Response(429)
+            return httpx.Response(503)
+        return httpx.Response(200, json=_fixture_payload())
+
+    provider = TavilySearchProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+
+    results = await provider.search("query", max_results=1)
+
+    assert len(results) == 1
+    assert calls == 3
+    assert provider.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_tavily_stops_retrying_after_three_transient_failures() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise httpx.ReadTimeout("timeout", request=request)
+
+    provider = TavilySearchProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ProviderRetriableError):
+        await provider.search("query", max_results=1)
+
+    assert calls == 3
+    assert provider.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_tavily_uses_bounded_connect_and_read_timeouts() -> None:
+    timeouts: list[dict[str, float | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        timeout = request.extensions["timeout"]
+        assert isinstance(timeout, dict)
+        timeouts.append(timeout)
+        return httpx.Response(200, json=_fixture_payload())
+
+    provider = TavilySearchProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+
+    await provider.search("query", max_results=1)
+
+    assert timeouts == [{"connect": 5.0, "read": 15.0, "write": 15.0, "pool": 15.0}]
