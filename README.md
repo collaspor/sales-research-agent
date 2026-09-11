@@ -2,7 +2,9 @@
 
 面向售前工程师的证据驱动型公网调研 Agent。项目以可信度为硬门槛、效率为第二目标，通过 LangGraph 编排调研计划、信息采集、证据抽取、事实核验和报告生成，使报告中的外部事实可以追溯到原始来源。
 
-当前处于 **POC 风险验证阶段**：离线的可恢复 Graph、证据门禁、双格式报告和验收回归已具备；海尔智家真实公网运行与人工事实审阅仍待执行。
+当前处于 **POC 风险验证阶段**：离线的可恢复 Graph、证据门禁、双格式报告和验收回归已具备。2026-09-11 已完成海尔智家真实公网运行与全量 Fact 人工审阅，结论为 **PARTIAL**：可生成带证据的双格式报告，但官方来源摄取、PDF 路由及运行遥测仍未达到 MVP 门槛。详见 [真实运行审阅](docs/poc/2026-09-11-haier-live-run-review.md) 与 [POC 决策记录](docs/poc/2026-09-11-poc-decision-record.md)。
+
+该次真实案例使用 `uv run sales-research run --case evals/cases/haier_first_meeting.json --live` 执行；随后已通过 `uv lock --check`、`uv sync --locked`、`uv run pytest -m "not live" -q`（86 passed, 1 deselected）、`uv run ruff check .` 与 `uv run mypy src`。
 
 ## 当前范围
 

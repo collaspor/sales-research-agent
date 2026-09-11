@@ -949,23 +949,23 @@ git commit -m "test: add offline poc acceptance suite"
 - Create after review, using the actual execution date: `docs/poc/YYYY-MM-DD-poc-decision-record.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: 先执行 Provider 冒烟测试**
+- [x] **Step 1: 先执行 Provider 冒烟测试**
 
 从现有本地环境安全注入 `TAVILY_API_KEY` 与 `DEEPSEEK_API_KEY`，命令不得回显值。
 
 Run: `uv run sales-research run --case evals/cases/haier_first_meeting.json --live`
 Expected: 启动时输出 run_id；在 30 分钟内进入终态或输出可诊断的 Provider 决策失败。不得使用旧项目代码执行流程。
 
-- [ ] **Step 2: 检查运行结构**
+- [x] **Step 2: 检查运行结构**
 
 Run: `uv run sales-research inspect --run-id $RUN_ID`，其中 `$RUN_ID` 是 Step 1 命令输出后由执行者显式赋值的 PowerShell 变量。
 Expected: 显示状态、耗时、搜索/HTTP/模型次数、来源成功失败数、Claim 决策数和报告路径，不显示密钥。
 
-- [ ] **Step 3: 人工逐条审阅全部外部 Fact**
+- [x] **Step 3: 人工逐条审阅全部外部 Fact**
 
 在 review 文档为每条 Fact 记录：Claim ID、报告文本、Source URL、Evidence quote、原文是否可定位、是否完整支持、关键数字是否一致、人工结论和备注。POC Fact 数量小，必须全量审阅，不抽样。
 
-- [ ] **Step 4: 执行 live 后回归与泄漏扫描**
+- [x] **Step 4: 执行 live 后回归与泄漏扫描**
 
 Run: `uv run pytest -m "not live" -q`
 Expected: PASS。
@@ -976,7 +976,7 @@ Expected: `var/` 不出现；只出现准备提交的审阅文档与 README 更�
 Run: `git grep -n -E "tvly-[A-Za-z0-9_-]+|sk-[A-Za-z0-9_-]{16,}" -- ':!uv.lock'`
 Expected: 无输出。
 
-- [ ] **Step 5: 填写逐项决策记录**
+- [x] **Step 5: 填写逐项决策记录**
 
 对 Tavily、静态 HTML、DeepSeek 抽取、DeepSeek 核验、引用定位、LangGraph fan-out、SQLite Checkpointer、30 分钟预算和 HTML 报告分别给出 `KEEP/CHANGE/DEFER`，每项引用运行证据，不写笼统“POC 成功”。
 
