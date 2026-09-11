@@ -2,7 +2,7 @@
 
 面向售前工程师的证据驱动型公网调研 Agent。项目以可信度为硬门槛、效率为第二目标，通过 LangGraph 编排调研计划、信息采集、证据抽取、事实核验和报告生成，使报告中的外部事实可以追溯到原始来源。
 
-当前处于 **POC 风险验证前的产品与技术设计阶段**，尚未开始功能实现。
+当前处于 **POC 风险验证阶段**：离线的可恢复 Graph、证据门禁、双格式报告和验收回归已具备；海尔智家真实公网运行与人工事实审阅仍待执行。
 
 ## 当前范围
 
@@ -22,6 +22,8 @@
 - [项目开发复盘与面试讲解](docs/project-development-retrospective-and-interview-guide.txt)
 - [阶段 0：POC 风险验证规格](docs/superpowers/specs/2026-09-10-risk-validation-poc-design.md)
 - [阶段 0：POC 实施计划](docs/superpowers/plans/2026-09-10-risk-validation-poc-implementation.md)
+- [真实运行人工审阅模板](docs/poc/live-run-review-template.md)
+- [POC 决策记录模板](docs/poc/decision-record-template.md)
 
 ## 交互原型
 
@@ -29,8 +31,16 @@
 
 ## 下一步
 
-开展风险验证型 POC，跑通“输入背景 → 生成计划 → 公网搜索与抓取 → 提取事实和证据 → 引用核验 → Markdown/HTML 报告”的最小纵向闭环，再依据实测结果冻结 MVP 技术方案并拆分正式交付阶段。
+在显式开启联网模式后，以[海尔智家固定案例](evals/cases/haier_first_meeting.json)运行“输入背景 → 生成计划 → 公网搜索与抓取 → 提取事实和证据 → 引用核验 → Markdown/HTML 报告”的最小纵向闭环；随后逐条人工审阅 Fact，并依据实测结果填写决策记录、冻结 MVP 技术方案。
 
 ## 本地开发
 
-默认 `uv run pytest` 为离线测试，并排除标记为 `live` 的测试，不访问公网也不要求 API 密钥。需要运行 live 测试时使用 `uv run pytest -m live`，并设置对应环境变量；应用 CLI 的联网模式则使用未来的 `sales-research ... --live`。密钥只应保存在本地 `.env` 文件中，不要提交到版本库。
+默认 `uv run pytest` 为离线测试，并排除标记为 `live` 的测试，不访问公网也不要求 API 密钥。离线验收使用 Fake Provider 与本地 HTML，并检查 domain/checkpoint SQLite、原始与清洗制品、双格式报告、统计及密钥泄漏门禁。
+
+真实运行前，将密钥仅保存在本地 `.env` 或环境变量中，随后显式执行：
+
+```powershell
+uv run sales-research run --case evals/cases/haier_first_meeting.json --live
+```
+
+运行完成后使用 `sales-research inspect --run-id <run_id>` 查看脱敏汇总，并按审阅模板逐条核对全部外部 Fact。密钥不得提交到版本库、运行制品、日志或审阅文档。

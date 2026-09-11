@@ -156,6 +156,9 @@ class DomainRepository(ABC):
     async def save_stats(self, stats: RunStats) -> None: ...
 
     @abstractmethod
+    async def get_stats(self, run_id: str) -> RunStats | None: ...
+
+    @abstractmethod
     async def count_source_revisions(self, run_id: str) -> int: ...
 
     @abstractmethod

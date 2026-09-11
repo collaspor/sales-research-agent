@@ -170,8 +170,9 @@ class FakeFetcher:
 class TrackedFetcher:
     """提供可控 HTML 响应，并记录 Graph fan-out 的实际并发度。"""
 
-    def __init__(self) -> None:
+    def __init__(self, local_html: bytes) -> None:
         self._failed_urls: set[str] = set()
+        self._local_html = local_html
         self.failure_source_callback: Callable[[str], None] | None = None
         self.calls: list[str] = []
         self.active = 0
@@ -201,11 +202,21 @@ class TrackedFetcher:
             return FetchResult(
                 final_url=url,
                 status_code=200,
-                body=b"<html><body><p>2025 year company published annual report.</p></body></html>",
+                body=self._local_html,
                 content_type="text/html",
             )
         finally:
             self.active -= 1
+
+
+@dataclass(frozen=True, slots=True)
+class OfflineRun:
+    """完整离线运行后的可审计测试句柄。"""
+
+    run_id: str
+    repository: SQLiteRepository
+    artifacts: ArtifactStore
+    state: dict[str, object]
 
 
 class PocHarness:
@@ -218,7 +229,8 @@ class PocHarness:
         self.artifacts = ArtifactStore(root / "artifacts")
         self.search = FakeSearchProvider()
         self.model = FakeResearchModel()
-        self.fetcher = TrackedFetcher()
+        local_html = (Path(__file__).parent / "fixtures" / "html" / "article.html").read_bytes()
+        self.fetcher = TrackedFetcher(local_html)
         self.fetcher.failure_source_callback = self._include_failure_source
         self.crash_once = crash_once
         self.brief = Brief(
@@ -270,11 +282,20 @@ class PocHarness:
                         text="The company published an annual report in 2025.",
                         evidence_ids=["evidence-source-0-block-0-0"],
                         upstream_claim_ids=[],
-                    )
+                    ),
+                    ClaimCandidate(
+                        kind="FACT",
+                        text="The company announced an unverified acquisition.",
+                        evidence_ids=["evidence-source-0-block-0-0"],
+                        upstream_claim_ids=[],
+                    ),
                 ]
             )
         )
         self.model.queue_verification(SupportVerification(decision="SUPPORTED", reason="direct"))
+        self.model.queue_verification(
+            SupportVerification(decision="UNSUPPORTED", reason="not stated")
+        )
 
     def _include_failure_source(self, url: str) -> None:
         """仅在失败用例中向尚未消费的搜索结果追加第二个来源。"""
@@ -331,3 +352,19 @@ class PocHarness:
         return await graph.ainvoke(
             None, {"configurable": {"thread_id": self.run_id}, "max_concurrency": max_concurrency}
         )
+
+
+async def execute_offline_run(run_tree: Path) -> OfflineRun:
+    """以 Fake Provider 和本地 HTML 执行完整 POC，不读取环境密钥。"""
+    harness = PocHarness(run_tree)
+    await harness.initialize()
+    try:
+        state = await harness.run()
+        return OfflineRun(
+            run_id=harness.run_id,
+            repository=harness.repository,
+            artifacts=harness.artifacts,
+            state=state,
+        )
+    finally:
+        await harness.close()

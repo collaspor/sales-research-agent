@@ -229,6 +229,15 @@ class SQLiteRepository(DomainRepository):
             )
             await connection.commit()
 
+    async def get_stats(self, run_id: str) -> RunStats | None:
+        """读取已持久化的运行统计，供审计与离线验收复核。"""
+        async with self._connect() as connection:
+            cursor = await connection.execute(
+                "SELECT payload FROM run_stats WHERE run_id = ?", (run_id,)
+            )
+            row = await cursor.fetchone()
+            return RunStats.model_validate_json(row[0]) if row is not None else None
+
     async def count_source_revisions(self, run_id: str) -> int:
         async with self._connect() as connection:
             cursor = await connection.execute(
