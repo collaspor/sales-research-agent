@@ -31,7 +31,10 @@ def compile_markdown(report: ReportModel) -> str:
 
     lines.extend(["## 来源", ""])
     for source in sorted(report.sources, key=lambda item: item.source_id):
-        lines.append(f"- `{_attribute(source.source_id)}`：[{_text(source.title)}]({_url(source.url)})")
+        lines.append(
+            f"- `{_attribute(source.source_id)}`：[{_text(source.title)}]({_url(source.url)}) "
+            f"[{_authority_label(source.authority)}]"
+        )
     lines.append("")
     lines.extend(["## 证据索引", ""])
     for index, evidence in enumerate(sorted(report.evidence_index, key=lambda item: item.evidence_id), start=1):
@@ -155,7 +158,7 @@ def _append_fact_section(lines: list[str], title: str, items: tuple[ReportFact, 
     lines.extend([f"## {title}", ""])
     for item in sorted(items, key=lambda value: value.claim_id):
         evidence = ", ".join(_evidence_marker(value) for value in sorted(item.evidence_ids))
-        authority = "官方/一手来源" if item.authority == "OFFICIAL_PRIMARY" else "二手来源，待官方验证"
+        authority = _authority_label(item.authority)
         lines.append(f"- {_claim_marker(item.claim_id)} [{authority}] {_text(item.text)}")
         if evidence:
             lines.append(f"  - 证据：{evidence}")
@@ -207,6 +210,15 @@ def _text(value: str) -> str:
 
 def _url(value: str) -> str:
     return escape(value, quote=True)
+
+
+def _authority_label(authority: str) -> str:
+    """将来源等级转换为不会误导审阅者的固定中文标签。"""
+    if authority == "OFFICIAL_PRIMARY":
+        return "官方/一手来源"
+    if authority == "TRUSTED_SECONDARY":
+        return "二手来源，待官方验证"
+    return "来源等级未确认"
 
 
 def _template_environment() -> Environment:
