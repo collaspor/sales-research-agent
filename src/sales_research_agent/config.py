@@ -14,6 +14,12 @@ class Settings(BaseSettings):
 
     tavily_api_key: str | None = None
     deepseek_api_key: str | None = None
+    mineru_api_key: str | None = None
+    mineru_base_url: str = "https://mineru.net/api/v4"
+    mineru_poll_seconds: float = 3.0
+    mineru_timeout_seconds: float = 300.0
+    official_hosts: tuple[str, ...] = ()
+    trusted_secondary_hosts: tuple[str, ...] = ()
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
     live_mode: bool = False

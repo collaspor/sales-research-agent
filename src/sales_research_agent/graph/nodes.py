@@ -6,6 +6,7 @@ from typing import Any
 from sales_research_agent.domain.models import DocumentBlock, ResearchQuestion, Source
 from sales_research_agent.ingestion.extractor import HtmlExtractor
 from sales_research_agent.ingestion.ingestor import HtmlIngestor
+from sales_research_agent.ingestion.pdf_ingestor import PdfIngestor
 from sales_research_agent.reporting.compiler import publish_report
 from sales_research_agent.reporting.models import (
     ReportEvidence,
@@ -70,8 +71,9 @@ def make_nodes(services: Any) -> dict[str, Any]:
         for index, candidate in enumerate(select_sources(candidates_by_question, services.max_sources)):
             source = Source(
                 id=f"source-{index}", run_id=state["run_id"], url=candidate.url,
-                canonical_url=candidate.url, title=candidate.title, source_type="WEB",
+                    canonical_url=candidate.url, title=candidate.title, source_type="WEB",
                 discovered_by_question_ids=list(candidate.question_ids), authority=candidate.authority,
+                content_kind=services.source_policy.content_kind(candidate.url),
             )
             await services.repository.upsert_source(source, f"{state['run_id']}:source:{source.canonical_url}")
             source_ids.append(source.id)
@@ -85,7 +87,12 @@ def make_nodes(services: Any) -> dict[str, Any]:
         source = await services.repository.get_source(source_id)
         if source is None:
             return {"failed_source_ids": [source_id]}
-        ingestor = HtmlIngestor(services.fetcher, HtmlExtractor(), services.artifacts, services.repository)
+        is_pdf = source.content_kind == "PDF" or source.url.lower().split("?", 1)[0].endswith(".pdf")
+        ingestor = (
+            PdfIngestor(services.fetcher, services.pdf_parser, services.artifacts, services.repository)
+            if is_pdf
+            else HtmlIngestor(services.fetcher, HtmlExtractor(), services.artifacts, services.repository)
+        )
         outcome = await ingestor.ingest(state["run_id"], source_id, source.url)
         if outcome.failure is not None or outcome.source_revision is None or outcome.clean_ref is None:
             return {"failed_source_ids": [source_id]}
@@ -142,6 +149,8 @@ def make_nodes(services: Any) -> dict[str, Any]:
                 sources_failed=len(state["failed_source_ids"]),
                 claims_approved=len([claim for claim in claims if claim.status == "APPROVED"]),
                 claims_rejected=len([claim for claim in claims if claim.status == "REJECTED"]),
+                official_sources_succeeded=sum(1 for item in await services.repository.list_sources(state["run_id"]) if item.authority == "OFFICIAL_PRIMARY" and item.id in state["successful_source_ids"]),
+                secondary_sources_succeeded=sum(1 for item in await services.repository.list_sources(state["run_id"]) if item.authority == "TRUSTED_SECONDARY" and item.id in state["successful_source_ids"]),
             )
         )
         return {

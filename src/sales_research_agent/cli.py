@@ -18,7 +18,9 @@ from sales_research_agent.infrastructure.sqlite_repository import SQLiteReposito
 from sales_research_agent.ingestion.fetcher import Fetcher
 from sales_research_agent.ingestion.url_policy import UrlPolicy
 from sales_research_agent.providers.deepseek import DeepSeekProvider
+from sales_research_agent.providers.mineru import MinerUPdfParser
 from sales_research_agent.providers.tavily import TavilySearchProvider
+from sales_research_agent.sources.authority import SourceAuthorityPolicy
 
 app = typer.Typer(help="Evidence-driven public web research POC.", no_args_is_help=True)
 
@@ -111,6 +113,16 @@ async def _invoke_graph(
 
     artifacts = ArtifactStore(directory / "artifacts")
     search = TavilySearchProvider(settings.tavily_api_key or "")
+    pdf_parser = (
+        MinerUPdfParser(
+            settings.mineru_api_key or "",
+            base_url=settings.mineru_base_url,
+            poll_interval=settings.mineru_poll_seconds,
+            poll_timeout=settings.mineru_timeout_seconds,
+        )
+        if settings.mineru_api_key
+        else None
+    )
     client = httpx.AsyncClient()
     try:
         async with AsyncSqliteSaver.from_conn_string(str(directory / "checkpoint.sqlite3")) as saver:
@@ -120,6 +132,11 @@ async def _invoke_graph(
                     model=DeepSeekProvider(settings=settings),
                     fetcher=Fetcher(client, UrlPolicy()), clock=lambda: datetime.now(UTC),
                     max_sources=settings.max_sources, max_questions=settings.max_questions,
+                    pdf_parser=pdf_parser,
+                    source_policy=SourceAuthorityPolicy(
+                        official_hosts=frozenset(settings.official_hosts),
+                        trusted_secondary_hosts=frozenset(settings.trusted_secondary_hosts),
+                    ),
                 ), saver,
             )
             config = {"configurable": {"thread_id": run_id}, "max_concurrency": settings.max_concurrency}
@@ -140,6 +157,8 @@ async def _invoke_graph(
     finally:
         await client.aclose()
         await search.aclose()
+        if pdf_parser is not None:
+            await pdf_parser.aclose()
 
 
 async def _inspect_run(directory: Path, run_id: str) -> dict[str, object]:

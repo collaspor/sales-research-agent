@@ -46,3 +46,5 @@ uv run sales-research run --case evals/cases/haier_first_meeting.json --live
 ```
 
 运行完成后使用 `sales-research inspect --run-id <run_id>` 查看脱敏汇总，并按审阅模板逐条核对全部外部 Fact。密钥不得提交到版本库、运行制品、日志或审阅文档。
+
+来源等级通过 `OFFICIAL_HOSTS` 与 `TRUSTED_SECONDARY_HOSTS` 配置（Pydantic tuple 使用 JSON 数组格式）；未命中的域名保持为 `UNCLASSIFIED`，不会被模型猜测为官方来源。

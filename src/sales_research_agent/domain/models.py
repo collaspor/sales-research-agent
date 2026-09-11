@@ -154,6 +154,8 @@ class RunStats(DomainModel):
     sources_failed: int
     claims_approved: int
     claims_rejected: int
+    official_sources_succeeded: int = 0
+    secondary_sources_succeeded: int = 0
 
 
 class ReportVersion(DomainModel):
