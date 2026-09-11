@@ -72,6 +72,22 @@ def inspect(
     typer.echo(json.dumps(summary, ensure_ascii=False, sort_keys=True))
 
 
+@app.command()
+def web(
+    host: str = typer.Option("127.0.0.1", help="本地监听地址。"),
+    port: int = typer.Option(8765, min=1, max=65535, help="本地监听端口。"),
+    run_root: Path | None = typer.Option(None, help="覆盖本地运行目录。"),  # noqa: B008
+) -> None:
+    """启动本地浏览器入口；联网调研仍需显式配置 .env 密钥。"""
+    try:
+        settings = Settings(live_mode=True, run_root=run_root or Path("var/runs"))
+    except ValidationError as error:
+        raise typer.BadParameter(str(error.errors()[0]["msg"])) from error
+    from sales_research_agent.web import serve
+
+    serve(settings, host=host, port=port)
+
+
 def _load_case(path: Path) -> dict[str, str]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
