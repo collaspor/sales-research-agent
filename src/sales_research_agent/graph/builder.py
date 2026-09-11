@@ -14,6 +14,7 @@ from sales_research_agent.graph.nodes import make_nodes
 from sales_research_agent.graph.state import PocState
 from sales_research_agent.infrastructure.artifacts import ArtifactStore
 from sales_research_agent.providers.base import ResearchModel, SearchProvider
+from sales_research_agent.sources.authority import SourceAuthorityPolicy
 
 
 @dataclass(slots=True)
@@ -31,6 +32,7 @@ class Services:
     crash_once: bool = False
     questions: dict[str, ResearchQuestion] = field(default_factory=dict)
     run_stats_type: type[RunStats] = RunStats
+    source_policy: SourceAuthorityPolicy = field(default_factory=SourceAuthorityPolicy)
 
 
 def build_poc_graph(services: Services, checkpointer: Any) -> Any:

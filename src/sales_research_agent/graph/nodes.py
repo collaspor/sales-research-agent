@@ -18,6 +18,7 @@ from sales_research_agent.reporting.models import (
     ReportStats,
 )
 from sales_research_agent.runtime import ResearchPipeline
+from sales_research_agent.sources.selection import SourceCandidate, select_sources
 
 
 def make_nodes(services: Any) -> dict[str, Any]:
@@ -49,28 +50,31 @@ def make_nodes(services: Any) -> dict[str, Any]:
         return {"research_question_ids": question_ids}
 
     async def discover_sources(state: dict[str, Any]) -> dict[str, object]:
-        source_ids: list[str] = []
+        candidates_by_question: dict[str, list[SourceCandidate]] = {}
         for question_id in state["research_question_ids"]:
             question = await services.repository.get_research_question(question_id)
             if question is None:
                 raise ValueError("research question is not persisted")
             results = await services.search.search(question.text, services.max_sources)
-            for result in results:
-                if len(source_ids) >= services.max_sources:
-                    break
-                source = Source(
-                    id=f"source-{len(source_ids)}",
-                    run_id=state["run_id"],
+            candidates_by_question[question_id] = [
+                SourceCandidate(
                     url=result.url,
-                    canonical_url=result.url,
                     title=result.title,
-                    source_type="WEB",
-                    discovered_by_question_ids=[question_id],
+                    score=result.score,
+                    authority=services.source_policy.classify(result.url),
+                    question_ids=(question_id,),
                 )
-                await services.repository.upsert_source(
-                    source, f"{state['run_id']}:source:{source.canonical_url}"
-                )
-                source_ids.append(source.id)
+                for result in results
+            ]
+        source_ids: list[str] = []
+        for index, candidate in enumerate(select_sources(candidates_by_question, services.max_sources)):
+            source = Source(
+                id=f"source-{index}", run_id=state["run_id"], url=candidate.url,
+                canonical_url=candidate.url, title=candidate.title, source_type="WEB",
+                discovered_by_question_ids=list(candidate.question_ids), authority=candidate.authority,
+            )
+            await services.repository.upsert_source(source, f"{state['run_id']}:source:{source.canonical_url}")
+            source_ids.append(source.id)
         return {"source_ids": source_ids}
 
     async def ingest_source(state: dict[str, Any]) -> dict[str, object]:
@@ -172,13 +176,14 @@ async def _build_report(services: Any, state: dict[str, Any]) -> ReportModel:
             ReportFact(
                 claim_id=item.id, text=item.text, evidence_ids=tuple(item.evidence_ids),
                 source_ids=tuple(sorted({evidence_source[eid] for eid in item.evidence_ids if eid in evidence_source})),
+                authority=_fact_authority(item.evidence_ids, evidence_source, sources),
             ) for item in approved
         ),
         recent_changes=(), inferences=(),
         questions=tuple(ReportQuestion(claim_id=item.id, text=item.text) for item in claims if item.kind == "QUESTION"),
         gaps=tuple(ReportGap(code=item.code, description=item.description) for item in gaps),
         failures=tuple(ReportFailure(code=item.code, message=item.message) for item in failures),
-        sources=tuple(ReportSource(source_id=item.id, title=item.title, url=item.url) for item in sources),
+        sources=tuple(ReportSource(source_id=item.id, title=item.title, url=item.url, authority=item.authority) for item in sources),
         evidence_index=tuple(
             ReportEvidence(evidence_id=item.id, quote=item.quote, source_id=evidence_source[item.id])
             for item in evidence if item.id in evidence_source
@@ -186,8 +191,21 @@ async def _build_report(services: Any, state: dict[str, Any]) -> ReportModel:
         stats=ReportStats(
             sources_succeeded=len(state["successful_source_ids"]),
             sources_failed=len(state["failed_source_ids"]), claims_approved=len(approved),
+            official_sources_succeeded=sum(1 for item in sources if item.authority == "OFFICIAL_PRIMARY" and item.id in state["successful_source_ids"]),
+            secondary_sources_succeeded=sum(1 for item in sources if item.authority == "TRUSTED_SECONDARY" and item.id in state["successful_source_ids"]),
+            official_coverage=any(item.authority == "OFFICIAL_PRIMARY" and item.id in state["successful_source_ids"] for item in sources),
         ),
     )
+
+
+def _fact_authority(evidence_ids: list[str], evidence_source: dict[str, str], sources: list[Source]) -> str:
+    by_id = {item.id: item.authority for item in sources}
+    authorities = [by_id.get(evidence_source[eid], "UNCLASSIFIED") for eid in evidence_ids if eid in evidence_source]
+    if "OFFICIAL_PRIMARY" in authorities:
+        return "OFFICIAL_PRIMARY"
+    if "TRUSTED_SECONDARY" in authorities:
+        return "TRUSTED_SECONDARY"
+    return "UNCLASSIFIED"
 
 
 def _model_call_count(model: Any) -> int:

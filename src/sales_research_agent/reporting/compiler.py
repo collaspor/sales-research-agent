@@ -155,7 +155,8 @@ def _append_fact_section(lines: list[str], title: str, items: tuple[ReportFact, 
     lines.extend([f"## {title}", ""])
     for item in sorted(items, key=lambda value: value.claim_id):
         evidence = ", ".join(_evidence_marker(value) for value in sorted(item.evidence_ids))
-        lines.append(f"- {_claim_marker(item.claim_id)} {_text(item.text)}")
+        authority = "官方/一手来源" if item.authority == "OFFICIAL_PRIMARY" else "二手来源，待官方验证"
+        lines.append(f"- {_claim_marker(item.claim_id)} [{authority}] {_text(item.text)}")
         if evidence:
             lines.append(f"  - 证据：{evidence}")
     lines.append("")

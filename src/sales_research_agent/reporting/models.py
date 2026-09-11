@@ -16,6 +16,7 @@ class ReportFact(ReportItem):
     text: str
     evidence_ids: tuple[str, ...]
     source_ids: tuple[str, ...]
+    authority: str = "UNCLASSIFIED"
 
 
 class ReportInference(ReportItem):
@@ -54,6 +55,7 @@ class ReportSource(ReportItem):
     source_id: str
     title: str
     url: str
+    authority: str = "UNCLASSIFIED"
 
 
 class ReportEvidence(ReportItem):
@@ -70,6 +72,9 @@ class ReportStats(ReportItem):
     sources_succeeded: int
     sources_failed: int
     claims_approved: int
+    official_sources_succeeded: int = 0
+    secondary_sources_succeeded: int = 0
+    official_coverage: bool = False
 
 
 class ReportModel(ReportItem):

@@ -40,7 +40,14 @@ def select_sources(
                 selected[key] = candidate
                 remaining.append(key)
     rank = {"OFFICIAL_PRIMARY": 0, "TRUSTED_SECONDARY": 1, "UNCLASSIFIED": 2}
-    remaining.sort(key=lambda key: (rank[selected[key].authority], -(selected[key].score or 0.0), order.index(key) if key in order else len(order) + remaining.index(key)))
+    remaining_order = {key: index for index, key in enumerate(remaining)}
+    remaining.sort(
+        key=lambda key: (
+            rank[selected[key].authority],
+            -(selected[key].score or 0.0),
+            len(order) + remaining_order[key],
+        )
+    )
     keys = order + remaining
     return [selected[key] for key in keys[:max_sources]]
 
