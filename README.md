@@ -2,7 +2,7 @@
 
 面向售前工程师的证据驱动型公网调研 Agent。项目以可信度为硬门槛、效率为第二目标，通过 LangGraph 编排调研计划、信息采集、证据抽取、事实核验和报告生成，使报告中的外部事实可以追溯到原始来源。
 
-当前处于 **POC 风险验证阶段**：离线的可恢复 Graph、证据门禁、双格式报告和验收回归已具备。2026-09-11 已完成海尔智家真实公网运行与全量 Fact 人工审阅，结论为 **PARTIAL**：可生成带证据的双格式报告，但官方来源摄取、PDF 路由及运行遥测仍未达到 MVP 门槛。详见 [真实运行审阅](docs/poc/2026-09-11-haier-live-run-review.md) 与 [POC 决策记录](docs/poc/2026-09-11-poc-decision-record.md)。
+当前处于 **POC 已完成、MVP 收敛阶段**：可恢复 Graph、证据门禁、网页/PDF 摄取、双格式报告和异常降级已通过离线与真实公网验证。海尔智家案例记录为 PARTIAL（部分来源 HTTP 403），比亚迪案例成功生成完整报告；尚未完成本地交互入口和连续运行稳定性验收。详见 [MVP 验收清单](docs/mvp-acceptance-checklist.md)、[真实运行审阅](docs/poc/2026-09-11-haier-live-run-review.md) 与 [POC 决策记录](docs/poc/2026-09-11-poc-decision-record.md)。
 
 该次真实案例使用 `uv run sales-research run --case evals/cases/haier_first_meeting.json --live` 执行；随后已通过 `uv lock --check`、`uv sync --locked`、`uv run pytest -m "not live" -q`（86 passed, 1 deselected）、`uv run ruff check .` 与 `uv run mypy src`。
 
@@ -33,7 +33,7 @@
 
 ## 下一步
 
-在显式开启联网模式后，以[海尔智家固定案例](evals/cases/haier_first_meeting.json)运行“输入背景 → 生成计划 → 公网搜索与抓取 → 提取事实和证据 → 引用核验 → Markdown/HTML 报告”的最小纵向闭环；随后逐条人工审阅 Fact，并依据实测结果填写决策记录、冻结 MVP 技术方案。
+先按 [MVP 验收清单](docs/mvp-acceptance-checklist.md) 完成本地可用性与连续运行验收，再决定是否增加轻量 Web 入口。当前 CLI 纵向闭环为“输入背景 → 生成计划 → 公网搜索与抓取 → 提取事实和证据 → 引用核验 → Markdown/HTML 报告”。
 
 ## 本地开发
 
