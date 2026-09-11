@@ -44,7 +44,42 @@ def test_markdown_discloses_unclassified_authority_and_clickable_source(
 
     assert "来源等级未确认" in markdown
     assert "[示例来源](https://example.com/report)" in markdown
-    assert "二手来源，待官方验证" not in markdown
+    assert "[来源等级未确认]" in markdown
+
+
+def test_report_v2_markdown_has_reviewable_core_sections(report_model: ReportModel) -> None:
+    markdown = compile_markdown(report_model)
+
+    for heading in (
+        "## 0. 报告说明",
+        "## 1. Executive Summary",
+        "## 2. 面向售前的事实摘要",
+        "## 3. 信息缺口与待确认事项",
+        "## 4. 证据索引",
+        "## 5. 来源清单",
+        "## 6. 失败来源",
+        "## 7. 研究覆盖情况",
+        "## 8. 本次运行统计",
+        "## Appendix：可信度说明",
+    ):
+        assert heading in markdown
+    assert "https://example.com/report" in markdown
+
+
+def test_report_v2_html_has_reviewable_core_sections(report_model: ReportModel) -> None:
+    html = compile_html(report_model)
+
+    for heading in (
+        "报告说明",
+        "Executive Summary",
+        "面向售前的事实摘要",
+        "信息缺口与待确认事项",
+        "证据索引",
+        "来源清单",
+        "研究覆盖情况",
+    ):
+        assert heading in html
+    assert 'href="https://example.com/report"' in html
 
 
 def test_report_model_and_nested_models_are_immutable(report_model: ReportModel) -> None:

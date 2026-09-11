@@ -21,38 +21,40 @@ from sales_research_agent.reporting.models import (
 
 def compile_markdown(report: ReportModel) -> str:
     """按稳定 ID 顺序编译 Markdown，保留审计所需的 data 属性。"""
-    lines = ["# 调研报告", "", "## 声明", "", _text(report.declaration), "", "## 执行摘要", "", _text(report.summary), ""]
-    _append_fact_section(lines, "客户公开事实", report.facts)
-    _append_fact_section(lines, "近期公开变化", report.recent_changes)
-    _append_inference_section(lines, report.inferences)
-    _append_question_section(lines, report.questions)
-    _append_plain_section(lines, "信息缺口", ((item.code, item.description) for item in report.gaps))
-    _append_plain_section(lines, "失败来源", ((item.code, item.message) for item in report.failures))
+    source_by_id = {item.source_id: item for item in report.sources}
+    lines = ["# 售前会前公网调研报告", "", "## 0. 报告说明", "", _text(report.declaration), ""]
+    lines.extend(["### 来源等级", "", "| 标记 | 含义 |", "|---|---|", "| `L1` | 官方 / 一手来源 |", "| `L2` | 二手来源，待官方验证 |", "| `LU` | 来源等级尚未确认，需要人工判断 |", "", "来源等级是系统提示，不代表内容本身一定真实。关键事实应打开原始网页进行最终确认。", ""])
+    lines.extend(["## 1. Executive Summary", "", "### 1.1 当前调研摘要", "", _text(report.summary), ""])
+    lines.extend(["### 1.2 面客前最值得关注的事实", ""])
+    _append_fact_cards(lines, report.facts)
+    lines.extend(["### 1.3 当前最重要的信息缺口", ""])
+    _append_plain_section(lines, "", ((item.code, item.description) for item in report.gaps), heading=False)
 
-    lines.extend(["## 来源", ""])
-    for source in sorted(report.sources, key=lambda item: item.source_id):
-        lines.append(
-            f"- `{_attribute(source.source_id)}`：[{_text(source.title)}]({_url(source.url)}) "
-            f"[{_authority_label(source.authority)}]"
-        )
-    lines.append("")
-    lines.extend(["## 证据索引", ""])
+    lines.extend(["## 2. 面向售前的事实摘要", "", "### 2.1 业务与技术公开事实", ""])
+    _append_fact_section(lines, "", report.facts, heading=False)
+    if not report.facts:
+        lines.append("未获得可靠公开信息。\n")
+    lines.extend(["## 3. 信息缺口与待确认事项", ""])
+    _append_plain_section(lines, "", ((item.code, item.description) for item in report.gaps), heading=False)
+    if not report.gaps:
+        lines.append("本次未记录结构化信息缺口。\n")
+    _append_question_section(lines, report.questions)
+    lines.extend(["## 4. 证据索引", ""])
     for index, evidence in enumerate(sorted(report.evidence_index, key=lambda item: item.evidence_id), start=1):
-        lines.append(
-            f"{index}. {_evidence_marker(evidence.evidence_id)} {_text(evidence.quote)}"
-            f"（来源：`{_attribute(evidence.source_id)}`）"
-        )
-    lines.append("")
-    lines.extend(
-        [
-            "## 本次运行统计",
-            "",
-            f"- 成功来源：{report.stats.sources_succeeded}",
-            f"- 失败来源：{report.stats.sources_failed}",
-            f"- 已批准 Claim：{report.stats.claims_approved}",
-            "",
-        ]
-    )
+        source = source_by_id.get(evidence.source_id)
+        lines.extend([f"### E{index:03d} {{#{evidence.evidence_id}}}", "", f"**Claim/Evidence ID：** {_evidence_marker(evidence.evidence_id)} `{_attribute(evidence.evidence_id)}`", "", "**原文：**", "", f"> {_text(evidence.quote)}", ""])
+        if source is not None:
+            lines.extend([f"**来源标题：** {_text(source.title)}  ", f"**来源 URL：** {_url(source.url)}  ", f"**来源等级：** `{_authority_code(source.authority)}` {_authority_label(source.authority)}", ""])
+    lines.extend(["## 5. 来源清单", "", "| Source ID | 来源 | 来源等级 |", "|---|---|---|"])
+    for source in sorted(report.sources, key=lambda item: item.source_id):
+        lines.append(f"| `{_attribute(source.source_id)}` | [{_text(source.title)}]({_url(source.url)}) | `{_authority_code(source.authority)}` {_authority_label(source.authority)} |")
+    lines.extend(["", "## 6. 失败来源", ""])
+    _append_plain_section(lines, "", ((item.code, item.message) for item in report.failures), heading=False)
+    if not report.failures:
+        lines.append("本次没有记录失败来源。\n")
+    lines.extend(["## 7. 研究覆盖情况", "", f"- 已覆盖：{len(report.facts)} 条有证据事实、{len(report.evidence_index)} 条证据、{len(report.sources)} 个来源", "- 部分覆盖：来源等级与官方属性仍需人工复核", "- 未获得可靠公开信息：未在当前 ReportModel 中提供的企业字段和场景模块", ""])
+    lines.extend(["## 8. 本次运行统计", "", "| 指标 | 数值 |", "|---|---:|", f"| 成功来源 | {report.stats.sources_succeeded} |", f"| 失败来源 | {report.stats.sources_failed} |", f"| Evidence | {len(report.evidence_index)} |", f"| Verified Claims | {report.stats.claims_approved} |", f"| 官方来源覆盖 | {'是' if report.stats.official_coverage else '未确认'} |", ""])
+    lines.extend(["## Appendix：可信度说明", "", "1. 外部事实必须绑定可定位 Evidence。", "2. 无 Evidence 的内容不能作为确定事实进入报告。", "3. Fact、分析和信息缺口分开呈现。", "4. 系统不根据域名自动认定官方网站。", "5. 访问失败、解析失败和验证失败均显式记录。", ""])
     return "\n".join(lines)
 
 
@@ -154,8 +156,9 @@ async def publish_report(
     return await ReportPublisher(artifacts, repository).publish(run_id, report)
 
 
-def _append_fact_section(lines: list[str], title: str, items: tuple[ReportFact, ...]) -> None:
-    lines.extend([f"## {title}", ""])
+def _append_fact_section(lines: list[str], title: str, items: tuple[ReportFact, ...], *, heading: bool = True) -> None:
+    if heading:
+        lines.extend([f"## {title}", ""])
     for item in sorted(items, key=lambda value: value.claim_id):
         evidence = ", ".join(_evidence_marker(value) for value in sorted(item.evidence_ids))
         authority = _authority_label(item.authority)
@@ -163,6 +166,15 @@ def _append_fact_section(lines: list[str], title: str, items: tuple[ReportFact, 
         if evidence:
             lines.append(f"  - 证据：{evidence}")
     lines.append("")
+
+
+def _append_fact_cards(lines: list[str], items: tuple[ReportFact, ...]) -> None:
+    """将重点事实以可审阅卡片输出，来源详情在证据索引中展开。"""
+    for index, item in enumerate(sorted(items, key=lambda value: value.claim_id), start=1):
+        evidence = ", ".join(_evidence_marker(value) for value in sorted(item.evidence_ids))
+        lines.extend([f"#### {index}．{_text(item.text)}", "", f"**来源等级：** `{_authority_code(item.authority)}` {_authority_label(item.authority)}", f"**证据：** {evidence or '未获得可靠公开证据'}", ""])
+    if not items:
+        lines.append("未获得可靠公开信息。\n")
 
 
 def _append_inference_section(lines: list[str], items: tuple[ReportInference, ...]) -> None:
@@ -185,8 +197,9 @@ def _append_question_section(lines: list[str], items: tuple[ReportQuestion, ...]
     lines.append("")
 
 
-def _append_plain_section(lines: list[str], title: str, items: Iterable[tuple[str, str]]) -> None:
-    lines.extend([f"## {title}", ""])
+def _append_plain_section(lines: list[str], title: str, items: Iterable[tuple[str, str]], *, heading: bool = True) -> None:
+    if heading:
+        lines.extend([f"## {title}", ""])
     for code, text in sorted(items):
         lines.append(f"- `{_attribute(code)}`：{_text(text)}")
     lines.append("")
@@ -219,6 +232,10 @@ def _authority_label(authority: str) -> str:
     if authority == "TRUSTED_SECONDARY":
         return "二手来源，待官方验证"
     return "来源等级未确认"
+
+
+def _authority_code(authority: str) -> str:
+    return {"OFFICIAL_PRIMARY": "L1", "TRUSTED_SECONDARY": "L2"}.get(authority, "LU")
 
 
 def _template_environment() -> Environment:
