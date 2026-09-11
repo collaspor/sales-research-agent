@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.11, LangGraph, Pydantic v2, httpx, SQLite/aiosqlite, MinerU HTTP API, pytest, Ruff, mypy.
 
+**Execution status (2026-09-11):** Tasks 1–6 implemented and pushed on `feat/risk-validation-poc`. Commits: `4d74295`, `886be5c`, `5feffb3`, `82ff616`, `affb1d0`, `d2b8751`, `be2485c`. Final offline regression: 92 passed, 1 deselected; real MinerU v4 PDF task reached `done` and returned parse text. The checkbox steps below remain the reusable task recipe; the execution ledger above is the completion record.
+
 ---
 
 ## File map
