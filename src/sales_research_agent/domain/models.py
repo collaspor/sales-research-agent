@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 
 UppercaseValue = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z_]*$")]
 FailureCode = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z0-9_]*$")]
+SourceAuthority = Literal["OFFICIAL_PRIMARY", "TRUSTED_SECONDARY", "UNCLASSIFIED"]
+ContentKind = Literal["HTML", "PDF", "UNKNOWN"]
 
 
 class DomainModel(BaseModel):
@@ -52,6 +54,8 @@ class Source(DomainModel):
     title: str
     source_type: UppercaseValue
     discovered_by_question_ids: list[str]
+    authority: SourceAuthority = "UNCLASSIFIED"
+    content_kind: ContentKind = "UNKNOWN"
 
 
 class SourceRevision(DomainModel):
