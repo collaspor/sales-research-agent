@@ -37,9 +37,11 @@ async def test_fetcher_retries_timeout_at_most_three_times(run_store) -> None:
 
 
 @pytest.mark.asyncio
-async def test_non_html_and_oversize_responses_are_structured_failures(run_store) -> None:
+async def test_pdf_is_accepted_but_unknown_binary_and_oversize_are_rejected(run_store) -> None:
     run_store.transport.queue_response(httpx.Response(200, headers={"content-type": "application/pdf"}, content=b"%PDF"))
-    non_html = await run_store.fetcher.fetch("https://fixture.test/document")
+    pdf = await run_store.fetcher.fetch("https://fixture.test/document.pdf")
+    run_store.transport.queue_response(httpx.Response(200, headers={"content-type": "image/png"}, content=b"png"))
+    non_html = await run_store.fetcher.fetch("https://fixture.test/image")
     run_store.transport.queue_response(
         httpx.Response(
             200,
@@ -49,6 +51,9 @@ async def test_non_html_and_oversize_responses_are_structured_failures(run_store
     )
     too_large = await run_store.fetcher.fetch("https://fixture.test/large")
 
+    assert pdf.failure is None
+    assert pdf.content_kind == "PDF"
+    assert pdf.body == b"%PDF"
     assert non_html.failure is not None
     assert non_html.failure.code == "UNSUPPORTED_CONTENT_TYPE"
     assert too_large.failure is not None

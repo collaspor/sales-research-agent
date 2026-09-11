@@ -33,6 +33,7 @@ class FetchResult:
     status_code: int | None = None
     body: bytes | None = None
     content_type: str | None = None
+    content_kind: str | None = None
     failure: FetchFailure | None = None
 
 
@@ -113,7 +114,10 @@ class Fetcher:
                         )
 
                     content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
-                    if content_type not in HTML_CONTENT_TYPES:
+                    content_kind = "HTML" if content_type in HTML_CONTENT_TYPES else (
+                        "PDF" if content_type == "application/pdf" else None
+                    )
+                    if content_kind is None:
                         return (
                             self._failure(
                                 "UNSUPPORTED_CONTENT_TYPE",
@@ -153,6 +157,7 @@ class Fetcher:
                             status_code=response.status_code,
                             body=body,
                             content_type=content_type,
+                            content_kind=content_kind,
                         ),
                         None,
                     )
