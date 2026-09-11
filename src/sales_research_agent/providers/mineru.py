@@ -1,6 +1,8 @@
 """MinerU 远程 PDF 解析适配器。"""
 
 import asyncio
+import io
+import zipfile
 from typing import Any
 
 import httpx
@@ -39,6 +41,7 @@ class _StatusData(BaseModel):
     model_config = ConfigDict(extra="ignore")
     state: str
     markdown_url: str | None = None
+    full_zip_url: str | None = None
     err_msg: str | None = None
 
 
@@ -95,9 +98,19 @@ class MinerUPdfParser(PdfParser):
                 raise MinerUError("mineru returned an invalid task response") from error
             if status.code != 0 or status.data.state == "failed":
                 raise MinerUError("mineru failed to parse the PDF")
-            if status.data.state == "done" and status.data.markdown_url:
-                response = await self._request("GET", status.data.markdown_url)
-                return ParsedPdf(task_id=task_id, text=response.text)
+            if status.data.state == "done" and (status.data.markdown_url or status.data.full_zip_url):
+                result_url = status.data.markdown_url or status.data.full_zip_url
+                assert result_url is not None
+                response = await self._request("GET", result_url)
+                if status.data.markdown_url:
+                    text = response.text
+                else:
+                    try:
+                        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+                            text = archive.read("full.md").decode("utf-8")
+                    except (KeyError, UnicodeDecodeError, zipfile.BadZipFile) as error:
+                        raise MinerUError("mineru result archive is invalid") from error
+                return ParsedPdf(task_id=task_id, text=text)
             if asyncio.get_running_loop().time() >= deadline:
                 raise MinerURetriableError("mineru parsing timed out")
             await asyncio.sleep(self._poll_interval)

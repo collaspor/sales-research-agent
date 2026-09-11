@@ -1,3 +1,6 @@
+import io
+import zipfile
+
 import httpx
 import pytest
 
@@ -6,12 +9,16 @@ from sales_research_agent.providers.mineru import MinerUPdfParser, MinerURetriab
 
 @pytest.mark.asyncio
 async def test_mineru_url_task_returns_markdown_after_done_poll() -> None:
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as output:
+        output.writestr("full.md", "# parsed\nRevenue 10%")
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST":
             return httpx.Response(200, json={"code": 0, "data": {"task_id": "task-1"}})
         if request.url.path.endswith("/task/task-1"):
-            return httpx.Response(200, json={"code": 0, "data": {"state": "done", "markdown_url": "https://result.example/a.md"}})
-        return httpx.Response(200, text="# parsed\nRevenue 10%")
+            return httpx.Response(200, json={"code": 0, "data": {"state": "done", "full_zip_url": "https://result.example/a.zip"}})
+        return httpx.Response(200, content=archive.getvalue())
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     parser = MinerUPdfParser(api_key="test-key", client=client)
