@@ -786,7 +786,7 @@ git commit -m "feat: compile traceable dual format reports"
 - Modify: `tests/conftest.py`
 - Modify: `pyproject.toml`
 
-- [ ] **Step 1: 写正常 Graph 路由测试**
+- [x] **Step 1: 写正常 Graph 路由测试**
 
 ```python
 @pytest.mark.asyncio
@@ -797,7 +797,7 @@ async def test_graph_builds_report_from_approved_claims(poc_harness) -> None:
     assert result["report_version_id"]
 ```
 
-- [ ] **Step 2: 写 fan-out 局部失败测试**
+- [x] **Step 2: 写 fan-out 局部失败测试**
 
 ```python
 @pytest.mark.asyncio
@@ -816,7 +816,7 @@ async def test_source_fanout_respects_configured_concurrency(poc_harness) -> Non
     assert poc_harness.fetcher.peak_concurrency <= 3
 ```
 
-- [ ] **Step 3: 运行 RED 并实现 Graph**
+- [x] **Step 3: 运行 RED 并实现 Graph**
 
 Run: `uv run pytest tests/integration/test_poc_graph.py -q`
 Expected: FAIL。
@@ -839,7 +839,7 @@ return [
 
 `ingest_source` 只读取这三个字段并返回父 State 已声明的 reducer 字段。来源列表 reducer 稳定去重；Graph 通过 closure 注入 `Services(repository, artifacts, search, model, fetcher, clock)`，不把 client 放进 State。`PocHarness.run(max_concurrency=3)` 和 CLI 都把 `RunnableConfig(configurable={"thread_id": run_id}, max_concurrency=settings.max_concurrency)` 传入 `ainvoke`，从运行时限制 fan-out 并发。`tests/fakes.py` 定义 `PocHarness`，负责创建临时 run 目录、Fake Providers、真实 SQLite Repository、真实 Artifact Store 和真实 Checkpointer；可追踪 Fetcher 记录活动请求数与峰值并发。`tests/conftest.py` 暴露 `poc_harness` 与 `crash_harness` fixture。创建 Checkpointer 前，runtime 根据 `Settings.langgraph_strict_msgpack` 设置 `LANGGRAPH_STRICT_MSGPACK=true`，并用测试确认 State 只包含允许的基础类型。
 
-- [ ] **Step 4: 写并实现恢复测试**
+- [x] **Step 4: 写并实现恢复测试**
 
 ```python
 @pytest.mark.asyncio
@@ -856,7 +856,7 @@ async def test_resume_does_not_duplicate_completed_source_revision(crash_harness
 
 使用真实 `AsyncSqliteSaver`，在部分 ingest 分支成功后让一个分支抛出一次硬失败；同一 `thread_id` 以 `ainvoke(None, config)` 恢复，并检查 pending writes 与领域幂等。
 
-- [ ] **Step 5: 实现 CLI 行为**
+- [x] **Step 5: 实现 CLI 行为**
 
 Typer 命令：
 
@@ -870,7 +870,7 @@ sales-research inspect --run-id RUN_ID_FROM_RUN_COMMAND
 
 CLI 创建完成后，在 `pyproject.toml` 增加 `[project.scripts]`，注册 `sales-research = "sales_research_agent.cli:app"` 入口。
 
-- [ ] **Step 6: 运行测试并提交**
+- [x] **Step 6: 运行测试并提交**
 
 Run: `uv run pytest tests/integration/test_poc_graph.py tests/fault_injection/test_graph_recovery.py tests/unit/test_cli.py -q`
 Expected: PASS。
