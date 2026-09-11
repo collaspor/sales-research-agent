@@ -980,7 +980,7 @@ Expected: 无输出。
 
 对 Tavily、静态 HTML、DeepSeek 抽取、DeepSeek 核验、引用定位、LangGraph fan-out、SQLite Checkpointer、30 分钟预算和 HTML 报告分别给出 `KEEP/CHANGE/DEFER`，每项引用运行证据，不写笼统“POC 成功”。
 
-- [ ] **Step 6: 更新 README 并提交 POC 证据**
+- [x] **Step 6: 更新 README 并提交 POC 证据**
 
 README 只写实际运行日期、案例、终态、测试命令和可证明指标。未经通过的能力继续标为设计或待验证。
 
@@ -989,7 +989,7 @@ git add docs/poc README.md
 git commit -m "docs: record live poc findings"
 ```
 
-- [ ] **Step 7: 密钥轮换提醒**
+- [x] **Step 7: 密钥轮换提醒**
 
 在交付说明中提醒用户轮换曾粘贴到对话中的 Tavily Key。轮换是用户账户操作，不由测试或应用代码自动执行。
 
