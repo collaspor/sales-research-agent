@@ -97,6 +97,23 @@ class SearchProvider(ABC):
         """返回来源候选；摘要绝不能被当作 Evidence。"""
 
 
+class ParsedPdf(BaseModel):
+    """PDF 解析器返回的最小纯文本结果。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str
+    text: str
+
+
+class PdfParser(ABC):
+    """PDF 解析服务的稳定端口。"""
+
+    @abstractmethod
+    async def parse(self, pdf_bytes: bytes, source_url: str) -> ParsedPdf:
+        """返回已解析的纯文本及脱敏任务标识。"""
+
+
 class ResearchModel(ABC):
     """研究链路所需的结构化模型能力。"""
 
