@@ -142,8 +142,8 @@ def make_nodes(services: Any) -> dict[str, Any]:
                 run_id=state["run_id"],
                 started_at=datetime.fromisoformat(state["started_at"]),
                 finished_at=now.astimezone(UTC),
-                search_calls=len(services.search.calls),
-                http_calls=len(services.fetcher.calls),
+                search_calls=_service_call_count(services.search),
+                http_calls=_service_call_count(services.fetcher),
                 model_calls=_model_call_count(services.model),
                 sources_succeeded=len(state["successful_source_ids"]),
                 sources_failed=len(state["failed_source_ids"]),
@@ -222,3 +222,11 @@ def _model_call_count(model: Any) -> int:
         len(getattr(model, field, []))
         for field in ("plan_calls", "evidence_calls", "claim_calls", "verification_calls")
     )
+
+
+def _service_call_count(service: Any) -> int:
+    """读取真实 Provider 计数，并兼容测试桩的 calls 列表。"""
+    call_count = getattr(service, "call_count", None)
+    if isinstance(call_count, int):
+        return call_count
+    return len(getattr(service, "calls", []))
