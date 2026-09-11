@@ -15,9 +15,9 @@ PDF 使用 MinerU API。密钥只从环境变量读取；原始 PDF、解析结�
 ## 2. 已确认的产品规则
 
 1. 每个外部 Fact 必须有可定位 Evidence；没有 Evidence 的内容只能成为 Gap，不得进入 Fact。
-2. 官方/一手来源优先。`OFFICIAL_PRIMARY` 是“官方来源覆盖”通过条件的唯一满足者。
+2. 官方/一手来源优先。`OFFICIAL_PRIMARY` 只是可解释的排序和提示标签，不替代用户对来源网页的最终判断。
 3. `TRUSTED_SECONDARY` 可以支撑 Fact，但报告必须显示“二手来源，待官方验证”。它不能被表述为官方结论，也不能使官方来源覆盖通过。
-4. `UNCLASSIFIED` 只作为候选或信息缺口，不得支撑最终 Fact。
+4. `UNCLASSIFIED` 仍可作为有证据的候选 Fact，但报告必须完整展示网页、标题、URL、访问时间和原文 Evidence，并明确“来源等级未确认”，由用户人工判断是否为官方网站。
 5. 全局来源上限仍为 6。每个研究问题先获得 1 个去重来源的机会；余下来源按可信等级、相关性、搜索顺序稳定排序补齐。
 6. HTML 403、PDF 解析失败、MinerU 超时或无效输出只能形成结构化 Failure，不得阻断其他来源或迫使报告虚构替代事实。
 
@@ -41,7 +41,7 @@ PDF 使用 MinerU API。密钥只从环境变量读取；原始 PDF、解析结�
 
 `Source` 新增 `authority` 和 `content_kind`。`content_kind` 只能为 `HTML`、`PDF` 或 `UNKNOWN`；它来自 HTTP 响应的媒体类型与 URL 后缀的保守组合，不能仅依赖搜索摘要。
 
-来源等级由纯函数 `classify_source(url)` 在本地决定，不由模型决定。第一版只维护明确、可测试的域名集合：案例配置传入的官方域名、交易所/监管域名和可信媒体域名。未命中即为 `UNCLASSIFIED`，不猜测域名归属。
+来源等级由纯函数 `classify_source(url)` 在本地决定，不由模型决定。域名集合通过可选环境变量配置，不填写也不阻止运行；未命中即为 `UNCLASSIFIED`，不猜测域名归属。所有来源网页和证据仍须在报告中可直接回查。
 
 ### 4.2 PDF 端口
 
@@ -86,9 +86,9 @@ Graph State 继续仅保存 ID 与结果摘要。`source_ids` 保持稳定去重
 
 - `OFFICIAL_PRIMARY` 显示“官方/一手来源”；
 - `TRUSTED_SECONDARY` 显示“二手来源，待官方验证”；
-- `UNCLASSIFIED` 不得作为 Fact 的 source ID。
+- `UNCLASSIFIED` 可作为 Fact 的 source ID，但必须显示“来源等级未确认”和可点击网页链接，不能宣称为官方来源。
 
-`ReportStats` 新增官方来源成功数、二手来源成功数、按问题的来源覆盖和 `official_coverage`。当报告存在 Fact 但官方成功数为 0 时，`report_outcome` 必须为 `PARTIAL`，并生成 `OFFICIAL_SOURCE_MISSING` Gap。现有 Evidence 定位、数字保护、语义核验和“只允许 APPROVED FACT 入报告”的规则不变。
+`ReportStats` 新增官方来源成功数、二手来源成功数、按问题的来源覆盖和 `official_coverage`。当报告存在 Fact 但没有已分类的官方来源时，报告必须显式披露“官方来源覆盖未确认”，但不因此丢弃有 Evidence 的 Fact；是否为官方网站由阅读者打开网页人工判断。现有 Evidence 定位、数字保护、语义核验和“只允许 APPROVED FACT 入报告”的规则不变。
 
 ## 8. 验收标准
 
@@ -100,10 +100,10 @@ Graph State 继续仅保存 ID 与结果摘要。`source_ids` 保持稳定去重
 4. Fake MinerU API 的成功 PDF 产生原始制品、解析文本、DocumentBlock 和可定位 Evidence。
 5. PDF 的解析超时、空正文、配置错误及 HTTP 403 被记录，且其他来源仍可结报。
 6. 可信媒体 Fact 在 Markdown 和 HTML 都带二手警示；官方 Fact 带官方标记。
-7. 没有成功官方来源时，即使二手 Fact 通过验证，`report_outcome` 为 `PARTIAL` 且出现官方来源缺口。
+7. 没有已分类官方来源时，即使二手或未确认来源的 Fact 通过验证，报告仍保留 Fact，同时显示官方来源覆盖未确认和可点击来源链接。
 8. 现有离线测试、Ruff、mypy、锁文件校验、密钥泄漏扫描继续通过。
 
-真实验收使用海尔智家和第二个行业案例。每个案例至少有一条成功摄取的 `OFFICIAL_PRIMARY` 来源、一个成功解析的公开 PDF，并由人工全量审阅所有 Fact 后才可解除 POC 的 MVP 阻断。
+真实验收使用海尔智家和比亚迪两个跨行业公开案例。每个案例至少有一个成功摄取的公开来源、一个成功解析的公开 PDF，并由人工全量审阅所有 Fact；官方判断由阅读者依据报告中的网页和原文完成，不要求每次运行前维护域名白名单。
 
 ## 9. 非目标与风险
 

@@ -284,9 +284,9 @@ Expected: old discovery stops source selection after the first question reaches 
 
 - [ ] **Step 3: Implement selection and ReportModel disclosure**
 
-In `discover_sources`, collect candidates for every persisted question before calling `select_sources`; construct one `Source` per selected URL with merged `discovered_by_question_ids`, deterministic authority and an initial `UNKNOWN` content kind. In `_build_report`, exclude `UNCLASSIFIED` sources from Fact source IDs; if an otherwise approved Fact loses all allowed sources, add an `UNCLASSIFIED_SOURCE_ONLY` Gap and omit that Fact.
+In `discover_sources`, collect candidates for every persisted question before calling `select_sources`; construct one `Source` per selected URL with merged `discovered_by_question_ids`, deterministic authority and an initial `UNKNOWN` content kind. In `_build_report`, keep valid Evidence-backed `UNCLASSIFIED` Facts, but show the source-level label and clickable URL; never present the label as a claim that the source is official.
 
-Extend `ReportSource`, `ReportFact`, and `ReportStats` with authority/official coverage fields. Compiler output must use fixed Chinese labels, retain `data-claim-id` and `data-evidence-id`, and leave existing escaping intact. `publish` sets `PARTIAL` and adds one idempotent `OFFICIAL_SOURCE_MISSING` Gap when approved Facts exist but no successful `OFFICIAL_PRIMARY` source exists.
+Extend `ReportSource`, `ReportFact`, and `ReportStats` with authority/official coverage fields. Compiler output must use fixed Chinese labels, retain `data-claim-id` and `data-evidence-id`, and leave existing escaping intact. Official coverage is a visible status and sorting signal, not a hard startup or output block; reports disclose when no source has been classified as official.
 
 - [ ] **Step 4: Run report and discovery regression**
 
@@ -349,7 +349,7 @@ Expected: all pass with no warnings.
 - [ ] **Step 5: Run explicit live acceptance only after the user supplies `MINERU_API_KEY`**
 
 Run: `uv run sales-research run --case evals/cases/haier_first_meeting.json --live`  
-Expected: all four questions call Tavily, at least one official source and one PDF are successfully ingested, Markdown/HTML show authority labels, and `inspect` reports duration/call/authority statistics without keys.
+Expected: all four questions call Tavily, at least one public source and one PDF are successfully ingested, Markdown/HTML show authority labels plus clickable source URLs, and `inspect` reports duration/call/authority statistics without keys.
 
 If any public site returns 403 or MinerU cannot parse a selected file, record the actual failure in the review document; do not claim the acceptance condition passed.
 
