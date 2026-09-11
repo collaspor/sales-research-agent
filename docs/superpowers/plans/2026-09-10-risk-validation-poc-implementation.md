@@ -891,7 +891,7 @@ git commit -m "feat: orchestrate recoverable poc graph"
 - Create: `docs/poc/decision-record-template.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: 创建不含预置答案的案例**
+- [x] **Step 1: 创建不含预置答案的案例**
 
 ```json
 {
@@ -905,11 +905,11 @@ git commit -m "feat: orchestrate recoverable poc graph"
 }
 ```
 
-- [ ] **Step 2: 写离线全链测试**
+- [x] **Step 2: 写离线全链测试**
 
 离线端到端使用固定 Provider fixture 和本地 HTML，断言产生 domain/checkpoint 两个数据库、raw/clean artifact、ReportModel、Markdown、HTML、统计，并验证报告只包含批准 Claim。
 
-- [ ] **Step 3: 写密钥泄漏测试**
+- [x] **Step 3: 写密钥泄漏测试**
 
 ```python
 @pytest.mark.asyncio
@@ -924,17 +924,17 @@ async def test_run_tree_does_not_contain_provider_keys(run_tree: Path, monkeypat
 
 `tests/fakes.py` 的异步 `execute_offline_run(run_tree)` 使用 Task 9 的 PocHarness 执行完整 Fake Graph；`run_tree` fixture 指向该测试独立的临时目录。它不能读取开发机环境中的真实 Provider Key。
 
-- [ ] **Step 4: 运行完整离线回归**
+- [x] **Step 4: 运行完整离线回归**
 
 Run: `uv run pytest -m "not live" -q && uv run ruff check . && uv run mypy src`
 Expected: 全部通过，零 warning/traceback。
 
-- [ ] **Step 5: 扫描 Git 跟踪内容**
+- [x] **Step 5: 扫描 Git 跟踪内容**
 
 Run: `git status --short && git grep -n -E "tvly-[A-Za-z0-9_-]+|sk-[A-Za-z0-9_-]{16,}" -- ':!uv.lock'`
 Expected: 第一条只显示本任务预期文件；第二条无输出。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```powershell
 git add evals tests docs/poc README.md
