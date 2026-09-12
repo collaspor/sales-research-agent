@@ -130,13 +130,13 @@ async def _resume_live_run(settings: Settings, run_id: str) -> None:
     if not (directory / "domain.sqlite3").is_file():
         raise typer.BadParameter("run was not found")
     repository = SQLiteRepository(directory / "domain.sqlite3")
-    await repository.initialize()
     metadata = await repository.get_run_metadata(run_id)
     version = metadata.runtime_version if metadata is not None else 1
     if version != CURRENT_RUNTIME_VERSION:
         raise typer.BadParameter(
             f"run runtime version {version} cannot be resumed by version {CURRENT_RUNTIME_VERSION}"
         )
+    await repository.initialize()
     await _invoke_graph(settings, directory, repository, run_id, resume=True)
 
 
@@ -204,7 +204,6 @@ async def _invoke_graph(
 
 async def _inspect_run(directory: Path, run_id: str) -> dict[str, object]:
     repository = SQLiteRepository(directory / "domain.sqlite3")
-    await repository.initialize()
     sources = await repository.list_sources(run_id)
     claims = await repository.list_claims(run_id)
     failures = await repository.list_failures(run_id)

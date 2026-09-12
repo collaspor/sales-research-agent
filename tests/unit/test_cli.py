@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -94,6 +95,35 @@ async def test_resume_rejects_legacy_run_before_provider_construction(tmp_path: 
     run_id = "legacy"
     repository = SQLiteRepository(tmp_path / run_id / "domain.sqlite3")
     await repository.initialize()
+    with sqlite3.connect(tmp_path / run_id / "domain.sqlite3") as connection:
+        connection.execute("DROP TABLE run_metadata")
 
     with pytest.raises(Exception, match="runtime version 1"):
         await _resume_live_run(Settings(run_root=tmp_path), run_id)
+
+    with sqlite3.connect(tmp_path / run_id / "domain.sqlite3") as connection:
+        tables = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+    assert "run_metadata" not in tables
+
+
+@pytest.mark.asyncio
+async def test_inspect_legacy_run_does_not_modify_its_schema(tmp_path: Path) -> None:
+    run_id = "legacy"
+    directory = tmp_path / run_id
+    repository = SQLiteRepository(directory / "domain.sqlite3")
+    await repository.initialize()
+    with sqlite3.connect(directory / "domain.sqlite3") as connection:
+        connection.execute("DROP TABLE run_metadata")
+
+    summary = await _inspect_run(directory, run_id)
+
+    assert summary["runtime_version"] == 1
+    with sqlite3.connect(directory / "domain.sqlite3") as connection:
+        tables = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+    assert "run_metadata" not in tables

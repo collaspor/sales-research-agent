@@ -1,6 +1,7 @@
 """基于 SQLite 的领域持久化实现。"""
 
 import json
+import sqlite3
 from pathlib import Path
 from typing import ClassVar, Protocol, TypeVar
 
@@ -252,12 +253,17 @@ class SQLiteRepository(DomainRepository):
             await connection.commit()
 
     async def get_run_metadata(self, run_id: str) -> RunMetadata | None:
-        async with self._connect() as connection:
-            cursor = await connection.execute(
-                "SELECT payload FROM run_metadata WHERE run_id = ?", (run_id,)
-            )
-            row = await cursor.fetchone()
-            return RunMetadata.model_validate_json(row[0]) if row is not None else None
+        try:
+            async with self._connect() as connection:
+                cursor = await connection.execute(
+                    "SELECT payload FROM run_metadata WHERE run_id = ?", (run_id,)
+                )
+                row = await cursor.fetchone()
+                return RunMetadata.model_validate_json(row[0]) if row is not None else None
+        except sqlite3.OperationalError as error:
+            if "no such table" not in str(error).lower():
+                raise
+            return None
 
     async def save_stats(self, stats: RunStats) -> None:
         async with self._connect() as connection:
