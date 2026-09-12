@@ -59,6 +59,16 @@ async def _save_block(repository: SQLiteRepository, text: str) -> DocumentBlock:
 
 
 @pytest.mark.asyncio
+async def test_corrupted_block_never_reaches_model(pipeline, repository):
+    block = await _save_block(repository, "损坏\ufffd正文")
+    result = await pipeline.run(block_ids=[block.id])
+    assert result.approved_claim_ids == []
+    assert pipeline.model.evidence_calls == []
+    assert await repository.list_claims("run-1") == []
+    assert (await repository.list_failures("run-1"))[0].code == "TEXT_UNREADABLE"
+
+
+@pytest.mark.asyncio
 async def test_pipeline_only_approves_supported_located_fact(
     pipeline: ResearchPipeline, repository: SQLiteRepository
 ) -> None:

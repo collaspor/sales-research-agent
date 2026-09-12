@@ -17,6 +17,7 @@ from sales_research_agent.reporting.models import (
     ReportModel,
     ReportQuestion,
 )
+from sales_research_agent.reporting.trust import attributed_fact, eligible_for_summary
 
 
 def compile_markdown(report: ReportModel) -> str:
@@ -26,12 +27,12 @@ def compile_markdown(report: ReportModel) -> str:
     lines.extend(["### 来源等级", "", "| 标记 | 含义 |", "|---|---|", "| `L1` | 官方 / 一手来源 |", "| `L2` | 二手来源，待官方验证 |", "| `LU` | 来源等级尚未确认，需要人工判断 |", "", "来源等级是系统提示，不代表内容本身一定真实。关键事实应打开原始网页进行最终确认。", ""])
     lines.extend(["## 1. Executive Summary", "", "### 1.1 当前调研摘要", "", _text(report.summary), ""])
     lines.extend(["### 1.2 面客前最值得关注的事实", ""])
-    _append_fact_cards(lines, report.facts)
+    _append_fact_cards(lines, tuple(f for f in report.facts if eligible_for_summary(f, report)))
     lines.extend(["### 1.3 当前最重要的信息缺口", ""])
     _append_plain_section(lines, "", ((item.code, item.description) for item in report.gaps), heading=False)
 
     lines.extend(["## 2. 面向售前的事实摘要", "", "### 2.1 业务与技术公开事实", ""])
-    _append_fact_section(lines, "", report.facts, heading=False)
+    _append_fact_section(lines, "", tuple(attributed_fact(f, report) for f in report.facts), heading=False)
     if not report.facts:
         lines.append("未获得可靠公开信息。\n")
     lines.extend(["## 3. 信息缺口与待确认事项", ""])
@@ -63,7 +64,8 @@ def compile_html(report: ReportModel) -> str:
     template = _template_environment().get_template("report.html.j2")
     return template.render(
         report=report,
-        facts=sorted(report.facts, key=lambda item: item.claim_id),
+        summary_facts=sorted((f for f in report.facts if eligible_for_summary(f, report)), key=lambda item: item.claim_id),
+        facts=sorted((attributed_fact(f, report) for f in report.facts), key=lambda item: item.claim_id),
         recent_changes=sorted(report.recent_changes, key=lambda item: item.claim_id),
         inferences=sorted(report.inferences, key=lambda item: item.claim_id),
         questions=sorted(report.questions, key=lambda item: item.claim_id),

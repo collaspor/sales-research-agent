@@ -1,6 +1,6 @@
 """POC 的可追溯领域实体。"""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
@@ -70,6 +70,8 @@ class SourceRevision(DomainModel):
     status_code: int
     raw_artifact_id: str
     sha256: str
+    published_on: date | None = None
+    encoding: str | None = None
 
 
 class DocumentBlock(DomainModel):

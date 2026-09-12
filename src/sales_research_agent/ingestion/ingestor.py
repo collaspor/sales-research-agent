@@ -71,7 +71,7 @@ class HtmlIngestor:
                 source_id,
                 extracted.failure_code or "EXTRACTION_FAILED",
                 False,
-                "HTML body contains no extractable content",
+                "HTML body is empty or cannot be decoded into reliable readable text",
             )
 
         clean_ref = self._artifacts.write_text(
@@ -92,6 +92,8 @@ class HtmlIngestor:
             status_code=fetched.status_code,
             raw_artifact_id=raw_ref.id,
             sha256=digest,
+            published_on=extracted.published_on,
+            encoding=extracted.encoding,
         )
         await self._repository.upsert_source_revision(
             revision, f"{run_id}:source-revision:{source_id}:{digest}"

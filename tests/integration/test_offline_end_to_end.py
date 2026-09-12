@@ -56,4 +56,5 @@ async def test_offline_poc_run_persists_auditable_approved_outputs(tmp_path: Pat
     assert metadata is not None
     assert metadata.runtime_version == 2
     assert metadata.execution_status == "FINISHED"
-    assert metadata.report_outcome == "COMPLETED"
+    assert metadata.report_outcome == "NEEDS_REVIEW"
+    assert "来源陈述，待人工核实" in markdown

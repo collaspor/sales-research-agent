@@ -1,6 +1,8 @@
 """报告输出使用的不可变数据模型。"""
 
-from pydantic import BaseModel, ConfigDict
+from datetime import UTC, date, datetime
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ReportItem(BaseModel):
@@ -56,6 +58,7 @@ class ReportSource(ReportItem):
     title: str
     url: str
     authority: str = "UNCLASSIFIED"
+    published_on: date | None = None
 
 
 class ReportEvidence(ReportItem):
@@ -91,3 +94,4 @@ class ReportModel(ReportItem):
     sources: tuple[ReportSource, ...]
     evidence_index: tuple[ReportEvidence, ...]
     stats: ReportStats
+    generated_on: date = Field(default_factory=lambda: datetime.now(UTC).date())

@@ -8,6 +8,7 @@ from sales_research_agent.domain.repository import DomainRepository
 from sales_research_agent.infrastructure.artifacts import ArtifactStore
 from sales_research_agent.ingestion.fetcher import Fetcher
 from sales_research_agent.ingestion.ingestor import IngestionResult
+from sales_research_agent.ingestion.text_quality import is_readable
 from sales_research_agent.providers.base import PdfParser
 from sales_research_agent.providers.mineru import MinerUError
 
@@ -49,6 +50,10 @@ class PdfIngestor:
             return await self._record_failure(run_id, source_id, "PDF_PARSE_FAILED", True, str(error))
         if not parsed.text.strip():
             return await self._record_failure(run_id, source_id, "PDF_PARSE_EMPTY", False, "MinerU returned no extractable text")
+        if not is_readable(parsed.text):
+            return await self._record_failure(
+                run_id, source_id, "TEXT_UNREADABLE", False, "PDF text is not reliably readable"
+            )
         text_digest = hashlib.sha256(parsed.text.encode("utf-8")).hexdigest()
         clean_ref = self._artifacts.write_text(
             run_id, f"sources/{source_id}/{text_digest}.md", parsed.text, media_type="text/markdown"

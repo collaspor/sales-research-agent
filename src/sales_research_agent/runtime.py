@@ -17,6 +17,7 @@ from sales_research_agent.domain.models import (
 )
 from sales_research_agent.domain.repository import DomainRepository
 from sales_research_agent.infrastructure.artifacts import ArtifactStore
+from sales_research_agent.ingestion.text_quality import is_readable
 from sales_research_agent.providers.base import (
     ClaimCandidate,
     ClaimSynthesis,
@@ -104,6 +105,11 @@ class ResearchPipeline:
                 )
                 continue
             blocks.append(block)
+        if any(not is_readable(block.text) for block in blocks):
+            await self._record_failure(
+                result, "LOAD_DOCUMENT_BLOCK", "TEXT_UNREADABLE", False, self._source_id
+            )
+            return []
         return blocks
 
     async def _extract_evidence(
@@ -159,7 +165,7 @@ class ResearchPipeline:
                 end=match.end if match is not None else 0,
                 locator_method=match.method if match is not None else "NOT_FOUND",
                 numeric_ok=numeric_ok,
-                status="APPROVED" if located and numeric_ok else "REJECTED",
+                status="APPROVED" if located and numeric_ok and is_readable(candidate.quote) else "REJECTED",
             )
             await self._repository.upsert_evidence(
                 evidence, f"{self._brief.run_id}:evidence:{evidence.id}"

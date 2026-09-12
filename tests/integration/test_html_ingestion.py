@@ -42,6 +42,19 @@ async def test_one_404_returns_failure_instead_of_raising(run_store) -> None:
 
 
 @pytest.mark.asyncio
+async def test_unreadable_html_is_saved_raw_but_not_as_clean_content(run_store):
+    body = '<html><body><article><p>' + '损坏\ufffd正文。' * 30 + '</p></article></body></html>'
+    run_store.transport.queue_response(httpx.Response(
+        200, headers={"content-type": "text/html"}, content=body.encode(),
+    ))
+    result = await run_store.ingestor.ingest("run-1", "src-bad", "https://fixture.test/article")
+    assert result.failure.code == "TEXT_UNREADABLE"
+    assert result.clean_ref is None
+    assert await run_store.repository.list_source_revisions("run-1") == []
+    assert len(await run_store.repository.list_artifact_refs("run-1")) == 1
+
+
+@pytest.mark.asyncio
 async def test_redirect_target_is_revalidated_before_it_is_requested(run_store, article_html: bytes) -> None:
     run_store.transport.queue_response(httpx.Response(302, headers={"location": "http://127.0.0.1/"}))
 

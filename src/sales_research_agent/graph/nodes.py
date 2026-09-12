@@ -27,6 +27,7 @@ from sales_research_agent.reporting.models import (
     ReportSource,
     ReportStats,
 )
+from sales_research_agent.reporting.trust import eligible_for_summary
 from sales_research_agent.runtime import ResearchPipeline
 from sales_research_agent.sources.selection import SourceCandidate, select_sources
 
@@ -168,6 +169,10 @@ def make_nodes(services: Any) -> dict[str, Any]:
             failures,
             state["failed_source_ids"],
         )
+        if report_outcome == "COMPLETED" and any(
+            not eligible_for_summary(fact, report) for fact in report.facts
+        ):
+            report_outcome = "NEEDS_REVIEW"
         calls = summarize_external_calls(
             await services.repository.list_audit_events(state["run_id"])
         )
@@ -243,7 +248,11 @@ async def _build_report(services: Any, state: dict[str, Any]) -> ReportModel:
         questions=tuple(ReportQuestion(claim_id=item.id, text=item.text) for item in claims if item.kind == "QUESTION"),
         gaps=tuple(ReportGap(code=item.code, description=item.description) for item in gaps),
         failures=tuple(ReportFailure(code=item.code, message=item.message) for item in failures),
-        sources=tuple(ReportSource(source_id=item.id, title=item.title, url=item.url, authority=item.authority) for item in sources),
+        sources=tuple(ReportSource(
+            source_id=item.id, title=item.title, url=item.url, authority=item.authority,
+            published_on=next((rev.published_on for rev in revisions.values()
+                               if rev.source_id == item.id), None),
+        ) for item in sources),
         evidence_index=tuple(
             ReportEvidence(evidence_id=item.id, quote=item.quote, source_id=evidence_source[item.id])
             for item in evidence if item.id in evidence_source
