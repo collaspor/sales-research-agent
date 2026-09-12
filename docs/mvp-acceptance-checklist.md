@@ -16,7 +16,7 @@ POC 已验证核心 Agent 链路、证据可信度门禁、网页/PDF 摄取、�
 | 来源网页可回查 | 通过 | HTML / Markdown 展示标题、URL 和来源等级 |
 | PDF 解析 | 通过 | MinerU API 已完成真实调用验证 |
 | 失败降级 | 通过 | 单来源失败不会阻断其他来源 |
-| 离线回归测试 | 通过 | 2026-09-12：`112 passed, 1 deselected`，Ruff 与 Mypy 通过 |
+| 离线回归测试 | 通过 | 2026-09-12：`120 passed, 1 deselected`，Ruff 与 Mypy 通过 |
 | 本地交互入口 | 通过 | `uv run sales-research web`，默认监听 `127.0.0.1:8765` |
 | 连续运行稳定性 | 通过 | 已完成 5 次真实运行，均无流程级崩溃，见重复运行记录 |
 | 售前人工审阅 | 通过 | 海尔和比亚迪批准 Fact 均已逐条核对 Evidence |
@@ -43,6 +43,9 @@ POC 已验证核心 Agent 链路、证据可信度门禁、网页/PDF 摄取、�
 - Evidence、Claim、Verification、Gap、Failure 和模型响应制品使用 Source—Question 作用域；
 - 同一来源关联多个研究问题时，正文只摄取一次，后续研究按关联问题分别执行；
 - Tavily、静态网页、MinerU 和 DeepSeek 的实际请求及重试写入两阶段审计事件；
+- 每次外部请求记录重试序号和关联实体；遥测无法持久化时受控失败并保存脱敏 Failure；
+- Graph 异常会把新运行或恢复运行的元数据终态写为 `FAILED`；
+- MinerU 的非法 JSON 或响应结构记录为 `SCHEMA_ERROR`，不再误计为成功；
 - `inspect` 保持原字段并增加版本、终态、耗时、调用次数及中断调用数；
 - CLI 测试不再读取项目本地 `.env`；
 - 本轮只完成离线回归，没有发起真实 Provider 调用。真实运行指标需要在用户授权后补充。

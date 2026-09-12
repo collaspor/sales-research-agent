@@ -4,7 +4,7 @@
 
 当前处于 **本地 CLI MVP**：可恢复 Graph、证据门禁、网页/PDF 摄取、双格式报告和异常降级已通过离线与真实公网验证；海尔智家与比亚迪案例均已运行，多次运行稳定性和 Fact 人工审阅已记录。项目暂不定位为多人生产服务。详见 [MVP 验收清单](docs/mvp-acceptance-checklist.md)、[比亚迪真实运行审阅](docs/poc/2026-09-11-byd-live-run-review.md) 与 [重复运行稳定性记录](docs/poc/2026-09-11-repeated-run-stability.md)。
 
-该次真实案例使用 `uv run sales-research run --case evals/cases/haier_first_meeting.json --live` 执行。2026-09-12 完成 P0 正确性收口后，本地离线验证结果为 `112 passed, 1 deselected`，并通过 `ruff check .` 与 `mypy src`；本轮没有重新发起真实公网运行。
+该次真实案例使用 `uv run sales-research run --case evals/cases/haier_first_meeting.json --live` 执行。2026-09-12 完成 P0 正确性收口及评审修复后，本地离线验证结果为 `120 passed, 1 deselected`，并通过 `ruff check .` 与 `mypy src`；本轮没有重新发起真实公网运行。
 
 P0 收口补齐了并行研究实体与模型制品隔离、共享来源的多问题覆盖、可跨恢复审计的外部调用遥测，以及 CLI 测试与开发者 `.env` 的隔离。新运行使用 runtime version 2；历史 version 1 报告仍可查看和检查，但不允许由新版继续恢复。
 

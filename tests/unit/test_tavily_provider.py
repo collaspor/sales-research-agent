@@ -101,13 +101,16 @@ async def test_tavily_retries_transient_failures_within_three_attempts(failure: 
         api_key="test-key", transport=httpx.MockTransport(handler), recorder=recorder
     )
 
-    results = await provider.search("query", max_results=1)
+    results = await provider.search("query", max_results=1, related_entity_id="question-1")
 
     assert len(results) == 1
     assert calls == 3
     assert provider.call_count == 3
     assert recorder.started_count("tavily") == 3
     assert recorder.finished_statuses("tavily")[-1] == "SUCCESS"
+    started = [event for event in recorder.events if event["event_type"] == "CALL_STARTED"]
+    assert [event["attempt"] for event in started] == [1, 2, 3]
+    assert {event["related_entity_id"] for event in started} == {"question-1"}
 
 
 @pytest.mark.asyncio

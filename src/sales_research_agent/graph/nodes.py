@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sales_research_agent.domain.models import (
+    CURRENT_RUNTIME_VERSION,
     Claim,
     DocumentBlock,
     ReportOutcome,
@@ -64,7 +65,11 @@ def make_nodes(services: Any) -> dict[str, Any]:
             question = await services.repository.get_research_question(question_id)
             if question is None:
                 raise ValueError("research question is not persisted")
-            results = await services.search.search(question.text, services.max_sources)
+            results = await services.search.search(
+                question.text,
+                services.max_sources,
+                related_entity_id=question_id,
+            )
             candidates_by_question[question_id] = [
                 SourceCandidate(
                     url=result.url,
@@ -192,7 +197,7 @@ def make_nodes(services: Any) -> dict[str, Any]:
         await services.repository.save_run_metadata(
             RunMetadata(
                 run_id=state["run_id"],
-                runtime_version=2,
+                runtime_version=CURRENT_RUNTIME_VERSION,
                 execution_status="FINISHED",
                 report_outcome=report_outcome,
                 started_at=started_at,
@@ -261,21 +266,6 @@ def _fact_authority(evidence_ids: list[str], evidence_source: dict[str, str], so
     if "TRUSTED_SECONDARY" in authorities:
         return "TRUSTED_SECONDARY"
     return "UNCLASSIFIED"
-
-
-def _model_call_count(model: Any) -> int:
-    return sum(
-        len(getattr(model, field, []))
-        for field in ("plan_calls", "evidence_calls", "claim_calls", "verification_calls")
-    )
-
-
-def _service_call_count(service: Any) -> int:
-    """读取真实 Provider 计数，并兼容测试桩的 calls 列表。"""
-    call_count = getattr(service, "call_count", None)
-    if isinstance(call_count, int):
-        return call_count
-    return len(getattr(service, "calls", []))
 
 
 def _determine_report_outcome(

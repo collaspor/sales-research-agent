@@ -13,6 +13,7 @@ import httpx
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from sales_research_agent.domain.models import (
+    CURRENT_RUNTIME_VERSION,
     Brief,
     DocumentBlock,
     Evidence,
@@ -42,9 +43,16 @@ class MemoryExternalCallRecorder:
     """在内存中保留 Provider 调用事件，供离线契约测试断言。"""
 
     def __init__(self) -> None:
-        self.events: list[dict[str, str]] = []
+        self.events: list[dict[str, object]] = []
 
-    async def start(self, *, provider: str, operation: str) -> str:
+    async def start(
+        self,
+        *,
+        provider: str,
+        operation: str,
+        attempt: int = 1,
+        related_entity_id: str | None = None,
+    ) -> str:
         call_id = str(uuid4())
         self.events.append(
             {
@@ -52,6 +60,8 @@ class MemoryExternalCallRecorder:
                 "call_id": call_id,
                 "provider": provider,
                 "operation": operation,
+                "attempt": attempt,
+                "related_entity_id": related_entity_id,
             }
         )
         return call_id
@@ -74,7 +84,7 @@ class MemoryExternalCallRecorder:
             if event.get("event_type") == "CALL_STARTED" and event.get("provider") == provider
         }
         return [
-            event["status"]
+            str(event["status"])
             for event in self.events
             if event.get("event_type") == "CALL_FINISHED" and event.get("call_id") in call_ids
         ]
@@ -129,7 +139,14 @@ class FakeSearchProvider(SearchProvider):
     def queue_results(self, results: list[SearchResult]) -> None:
         self._responses.append(results)
 
-    async def search(self, query: str, max_results: int) -> list[SearchResult]:
+    async def search(
+        self,
+        query: str,
+        max_results: int,
+        *,
+        related_entity_id: str | None = None,
+    ) -> list[SearchResult]:
+        del related_entity_id
         self.calls.append((query, max_results))
         if not self._responses:
             raise AssertionError("FakeSearchProvider response queue is empty")
@@ -209,7 +226,8 @@ class FakeFetcher:
     def queue_response(self, response: object) -> None:
         self._responses.append(response)
 
-    async def fetch(self, url: str) -> object:
+    async def fetch(self, url: str, *, related_entity_id: str | None = None) -> object:
+        del related_entity_id
         self.calls.append(url)
         if not self._responses:
             raise AssertionError("FakeFetcher response queue is empty")
@@ -236,7 +254,8 @@ class TrackedFetcher:
     def track_concurrency(self) -> None:
         self._track_concurrency = True
 
-    async def fetch(self, url: str) -> FetchResult:
+    async def fetch(self, url: str, *, related_entity_id: str | None = None) -> FetchResult:
+        del related_entity_id
         self.calls.append(url)
         self.active += 1
         self.peak_concurrency = max(self.peak_concurrency, self.active)
@@ -295,7 +314,7 @@ class PocHarness:
         await self.repository.save_run_metadata(
             RunMetadata(
                 run_id=self.run_id,
-                runtime_version=2,
+                runtime_version=CURRENT_RUNTIME_VERSION,
                 execution_status="RUNNING",
                 report_outcome=None,
                 started_at=now,

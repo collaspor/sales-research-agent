@@ -93,7 +93,13 @@ class SearchProvider(ABC):
     """公开搜索的异步端口。"""
 
     @abstractmethod
-    async def search(self, query: str, max_results: int) -> list[SearchResult]:
+    async def search(
+        self,
+        query: str,
+        max_results: int,
+        *,
+        related_entity_id: str | None = None,
+    ) -> list[SearchResult]:
         """返回来源候选；摘要绝不能被当作 Evidence。"""
 
 
@@ -110,7 +116,13 @@ class PdfParser(ABC):
     """PDF 解析服务的稳定端口。"""
 
     @abstractmethod
-    async def parse(self, pdf_bytes: bytes, source_url: str) -> ParsedPdf:
+    async def parse(
+        self,
+        pdf_bytes: bytes,
+        source_url: str,
+        *,
+        related_entity_id: str | None = None,
+    ) -> ParsedPdf:
         """返回已解析的纯文本及脱敏任务标识。"""
 
 

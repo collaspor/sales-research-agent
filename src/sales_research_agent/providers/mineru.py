@@ -3,7 +3,7 @@
 import asyncio
 import io
 import zipfile
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -55,6 +55,9 @@ class _StatusResponse(BaseModel):
     data: _StatusData
 
 
+ModelT = TypeVar("ModelT", bound=BaseModel)
+
+
 class MinerUPdfParser(PdfParser):
     """通过 MinerU 异步 URL 解析接口获取 Markdown。"""
 
@@ -82,55 +85,101 @@ class MinerUPdfParser(PdfParser):
         if self._owns_client:
             await self._client.aclose()
 
-    async def parse(self, pdf_bytes: bytes, source_url: str) -> ParsedPdf:
+    async def parse(
+        self,
+        pdf_bytes: bytes,
+        source_url: str,
+        *,
+        related_entity_id: str | None = None,
+    ) -> ParsedPdf:
         """提交来源 URL；bytes 由上层保留为本地原始制品。"""
         del pdf_bytes
-        submit = await self._request_json(
-            "POST", f"{self._base_url}/extract/task", {"url": source_url, "model_version": "vlm"}
+        task = await self._request_model(
+            "POST",
+            f"{self._base_url}/extract/task",
+            _SubmitResponse,
+            "mineru returned an invalid submit response",
+            {"url": source_url, "model_version": "vlm"},
+            related_entity_id=related_entity_id,
         )
-        try:
-            task = _SubmitResponse.model_validate(submit)
-        except ValidationError as error:
-            raise MinerUError("mineru returned an invalid submit response") from error
         if task.code != 0:
             raise MinerUError("mineru rejected the parse task")
         task_id = task.data.task_id
         deadline = asyncio.get_running_loop().time() + self._poll_timeout
         while True:
-            status_payload = await self._request_json("GET", f"{self._base_url}/extract/task/{task_id}")
-            try:
-                status = _StatusResponse.model_validate(status_payload)
-            except ValidationError as error:
-                raise MinerUError("mineru returned an invalid task response") from error
+            status = await self._request_model(
+                "GET",
+                f"{self._base_url}/extract/task/{task_id}",
+                _StatusResponse,
+                "mineru returned an invalid task response",
+                related_entity_id=related_entity_id,
+            )
             if status.code != 0 or status.data.state == "failed":
                 raise MinerUError("mineru failed to parse the PDF")
             if status.data.state == "done" and (status.data.markdown_url or status.data.full_zip_url):
                 result_url = status.data.markdown_url or status.data.full_zip_url
                 assert result_url is not None
-                response = await self._request("GET", result_url)
-                if status.data.markdown_url:
-                    text = response.text
-                else:
-                    try:
+                response, call_id = await self._request(
+                    "GET", result_url, related_entity_id=related_entity_id
+                )
+                try:
+                    if status.data.markdown_url:
+                        text = response.text
+                    else:
                         with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
                             text = archive.read("full.md").decode("utf-8")
-                    except (KeyError, UnicodeDecodeError, zipfile.BadZipFile) as error:
-                        raise MinerUError("mineru result archive is invalid") from error
+                except (KeyError, UnicodeDecodeError, zipfile.BadZipFile) as error:
+                    await self._recorder.finish(call_id, status="SCHEMA_ERROR")
+                    raise MinerUError("mineru result archive is invalid") from error
+                await self._recorder.finish(call_id, status="SUCCESS")
                 return ParsedPdf(task_id=task_id, text=text)
             if asyncio.get_running_loop().time() >= deadline:
                 raise MinerURetriableError("mineru parsing timed out")
             await asyncio.sleep(self._poll_interval)
 
-    async def _request_json(self, method: str, url: str, payload: dict[str, Any] | None = None) -> Any:
-        return (await self._request(method, url, payload)).json()
+    async def _request_model(
+        self,
+        method: str,
+        url: str,
+        model_type: type[ModelT],
+        error_message: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        related_entity_id: str | None = None,
+    ) -> ModelT:
+        response, call_id = await self._request(
+            method,
+            url,
+            payload,
+            related_entity_id=related_entity_id,
+        )
+        try:
+            result = model_type.model_validate(response.json())
+        except (ValueError, ValidationError) as error:
+            await self._recorder.finish(call_id, status="SCHEMA_ERROR")
+            raise MinerUError(error_message) from error
+        await self._recorder.finish(call_id, status="SUCCESS")
+        return result
 
-    async def _request(self, method: str, url: str, payload: dict[str, Any] | None = None) -> httpx.Response:
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        related_entity_id: str | None = None,
+    ) -> tuple[httpx.Response, str]:
         for attempt in range(1, MAX_ATTEMPTS + 1):
             self.call_count += 1
             operation = "submit" if method == "POST" else (
                 "poll" if "/extract/task/" in url else "download"
             )
-            call_id = await self._recorder.start(provider="mineru", operation=operation)
+            call_id = await self._recorder.start(
+                provider="mineru",
+                operation=operation,
+                attempt=attempt,
+                related_entity_id=related_entity_id,
+            )
             try:
                 response = await self._client.request(
                     method, url, json=payload, headers={"Authorization": f"Bearer {self._api_key}"}
@@ -156,6 +205,5 @@ class MinerUPdfParser(PdfParser):
             if response.status_code >= 400:
                 await self._recorder.finish(call_id, status=f"HTTP_{response.status_code}")
                 raise MinerUError("mineru rejected the request")
-            await self._recorder.finish(call_id, status="SUCCESS")
-            return response
+            return response, call_id
         raise MinerURetriableError("mineru request failed")

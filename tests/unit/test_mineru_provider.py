@@ -4,7 +4,7 @@ import zipfile
 import httpx
 import pytest
 
-from sales_research_agent.providers.mineru import MinerUPdfParser, MinerURetriableError
+from sales_research_agent.providers.mineru import MinerUError, MinerUPdfParser, MinerURetriableError
 from tests.fakes import MemoryExternalCallRecorder
 
 
@@ -48,3 +48,36 @@ async def test_mineru_timeout_is_redacted_and_bounded() -> None:
     await client.aclose()
     assert calls == 3
     assert "secret-never-output" not in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_mineru_malformed_json_is_recorded_as_schema_error() -> None:
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, text="not-json"))
+    )
+    recorder = MemoryExternalCallRecorder()
+    parser = MinerUPdfParser(api_key="test-key", client=client, recorder=recorder)
+
+    with pytest.raises(MinerUError, match="invalid submit response"):
+        await parser.parse(b"%PDF", "https://public.example/a.pdf")
+
+    await client.aclose()
+    assert recorder.finished_statuses("mineru") == ["SCHEMA_ERROR"]
+
+
+@pytest.mark.asyncio
+async def test_mineru_invalid_poll_schema_is_recorded_as_schema_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(200, json={"code": 0, "data": {"task_id": "task-1"}})
+        return httpx.Response(200, json={"code": 0, "data": {"unexpected": True}})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    recorder = MemoryExternalCallRecorder()
+    parser = MinerUPdfParser(api_key="test-key", client=client, recorder=recorder)
+
+    with pytest.raises(MinerUError, match="invalid task response"):
+        await parser.parse(b"%PDF", "https://public.example/a.pdf")
+
+    await client.aclose()
+    assert recorder.finished_statuses("mineru") == ["SUCCESS", "SCHEMA_ERROR"]

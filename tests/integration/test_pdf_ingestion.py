@@ -9,7 +9,14 @@ from sales_research_agent.providers.base import ParsedPdf, PdfParser
 
 
 class FakePdfParser(PdfParser):
-    async def parse(self, pdf_bytes: bytes, source_url: str) -> ParsedPdf:
+    async def parse(
+        self,
+        pdf_bytes: bytes,
+        source_url: str,
+        *,
+        related_entity_id: str | None = None,
+    ) -> ParsedPdf:
+        del related_entity_id
         return ParsedPdf(task_id="task-1", text="# 2025 年报\n营收 100 亿元")
 
 
@@ -34,7 +41,14 @@ async def test_pdf_ingestion_persists_original_and_mineru_text(repository, tmp_p
 @pytest.mark.asyncio
 async def test_pdf_parser_failure_is_structured(repository, tmp_path) -> None:
     class FailingParser(PdfParser):
-        async def parse(self, pdf_bytes: bytes, source_url: str) -> ParsedPdf:
+        async def parse(
+            self,
+            pdf_bytes: bytes,
+            source_url: str,
+            *,
+            related_entity_id: str | None = None,
+        ) -> ParsedPdf:
+            del related_entity_id
             raise RuntimeError("mineru unavailable")
 
     transport = httpx.MockTransport(lambda request: httpx.Response(200, headers={"content-type": "application/pdf"}, content=b"%PDF"))

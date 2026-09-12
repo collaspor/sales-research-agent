@@ -38,7 +38,7 @@ class HtmlIngestor:
 
     async def ingest(self, run_id: str, source_id: str, url: str) -> IngestionResult:
         """获取并保存一个来源；可预期失败被收敛为领域 Failure。"""
-        fetched = await self._fetcher.fetch(url)
+        fetched = await self._fetcher.fetch(url, related_entity_id=source_id)
         if fetched.failure is not None:
             return await self._record_failure(
                 run_id,

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+import sales_research_agent.cli as cli_module
 from sales_research_agent.cli import _inspect_run, _resume_live_run, app
 from sales_research_agent.config import Settings
 from sales_research_agent.domain.models import RunMetadata, RunStats
@@ -127,3 +128,64 @@ async def test_inspect_legacy_run_does_not_modify_its_schema(tmp_path: Path) -> 
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         }
     assert "run_metadata" not in tables
+
+
+@pytest.mark.asyncio
+async def test_new_run_marks_metadata_failed_when_graph_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fail_graph(*args, **kwargs) -> None:
+        del args, kwargs
+        raise RuntimeError("controlled graph failure")
+
+    monkeypatch.setattr(cli_module, "_invoke_graph", fail_graph)
+    settings = Settings(run_root=tmp_path)
+    payload = {
+        "customer_name": "示例客户",
+        "scenario": "首次交流",
+        "known_context": "公开信息",
+        "research_goal": "核验事实",
+    }
+
+    with pytest.raises(RuntimeError, match="controlled graph failure"):
+        await cli_module._start_live_run(settings, payload, "run-failed")
+
+    repository = SQLiteRepository(tmp_path / "run-failed" / "domain.sqlite3")
+    metadata = await repository.get_run_metadata("run-failed")
+    assert metadata is not None
+    assert metadata.execution_status == "FAILED"
+    assert metadata.report_outcome == "FAILED"
+    assert metadata.finished_at is not None
+
+
+@pytest.mark.asyncio
+async def test_resume_marks_metadata_failed_when_graph_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_id = "run-resume-failed"
+    repository = SQLiteRepository(tmp_path / run_id / "domain.sqlite3")
+    await repository.initialize()
+    await repository.save_run_metadata(
+        RunMetadata(
+            run_id=run_id,
+            runtime_version=2,
+            execution_status="RUNNING",
+            report_outcome=None,
+            started_at=datetime.now(UTC),
+            finished_at=None,
+        )
+    )
+
+    async def fail_graph(*args, **kwargs) -> None:
+        del args, kwargs
+        raise RuntimeError("controlled resume failure")
+
+    monkeypatch.setattr(cli_module, "_invoke_graph", fail_graph)
+
+    with pytest.raises(RuntimeError, match="controlled resume failure"):
+        await _resume_live_run(Settings(run_root=tmp_path), run_id)
+
+    metadata = await repository.get_run_metadata(run_id)
+    assert metadata is not None
+    assert metadata.execution_status == "FAILED"
+    assert metadata.report_outcome == "FAILED"

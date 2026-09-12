@@ -65,7 +65,9 @@ class DeepSeekProvider(ResearchModel):
 
     async def plan(self, brief: Brief) -> ResearchPlan:
         """生成最多四条、可由后续节点持久化的问题计划。"""
-        return await self._request_structured("plan", brief.model_dump(mode="json"), ResearchPlan)
+        return await self._request_structured(
+            "plan", brief.model_dump(mode="json"), ResearchPlan, brief.id
+        )
 
     async def extract_evidence(
         self, question: ResearchQuestion, blocks: list[DocumentBlock]
@@ -75,7 +77,9 @@ class DeepSeekProvider(ResearchModel):
             "question": question.model_dump(mode="json"),
             "blocks": [block.model_dump(mode="json") for block in blocks],
         }
-        return await self._request_structured("extract_evidence", payload, EvidenceExtraction)
+        return await self._request_structured(
+            "extract_evidence", payload, EvidenceExtraction, question.id
+        )
 
     async def synthesize_claims(self, brief: Brief, evidence: list[Evidence]) -> ClaimSynthesis:
         """仅基于已定位 Evidence 提出 Claim 候选。"""
@@ -83,7 +87,9 @@ class DeepSeekProvider(ResearchModel):
             "brief": brief.model_dump(mode="json"),
             "evidence": [item.model_dump(mode="json") for item in evidence],
         }
-        return await self._request_structured("synthesize_claims", payload, ClaimSynthesis)
+        return await self._request_structured(
+            "synthesize_claims", payload, ClaimSynthesis, brief.id
+        )
 
     async def verify_support(
         self, claim: ClaimCandidate, evidence: list[Evidence]
@@ -93,10 +99,17 @@ class DeepSeekProvider(ResearchModel):
             "claim": claim.model_dump(mode="json"),
             "evidence": [item.model_dump(mode="json") for item in evidence],
         }
-        return await self._request_structured("verify_support", payload, SupportVerification)
+        related_entity_id = evidence[0].id if evidence else None
+        return await self._request_structured(
+            "verify_support", payload, SupportVerification, related_entity_id
+        )
 
     async def _request_structured(
-        self, operation: str, payload: dict[str, Any], output_type: type[ModelOutput]
+        self,
+        operation: str,
+        payload: dict[str, Any],
+        output_type: type[ModelOutput],
+        related_entity_id: str | None,
     ) -> ModelOutput:
         system_message = self._system_message(operation, output_type)
         messages = [
@@ -106,14 +119,20 @@ class DeepSeekProvider(ResearchModel):
         for attempt in range(2):
             self.call_count += 1
             self.call_stats = self.call_stats.model_copy(update={"model_calls": self.call_count})
-            call_id = await self._recorder.start(provider="deepseek", operation=operation)
+            call_id = await self._recorder.start(
+                provider="deepseek",
+                operation=operation,
+                attempt=attempt + 1,
+                related_entity_id=related_entity_id,
+            )
             try:
                 response = await self._client.ainvoke(
                     messages,
                     response_format={"type": "json_object"},
                 )
-            except Exception:
-                await self._recorder.finish(call_id, status="ERROR")
+            except Exception as error:
+                status = "TIMEOUT" if "timeout" in type(error).__name__.lower() else "ERROR"
+                await self._recorder.finish(call_id, status=status)
                 raise
             content = getattr(response, "content", None)
             if isinstance(content, str) and content.strip():

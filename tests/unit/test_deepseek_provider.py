@@ -41,6 +41,34 @@ async def test_deepseek_retries_one_empty_json_response() -> None:
     assert "JSON" in messages[0]["content"]
     assert recorder.started_count("deepseek") == 2
     assert recorder.finished_statuses("deepseek") == ["SCHEMA_ERROR", "SUCCESS"]
+    started = [event for event in recorder.events if event["event_type"] == "CALL_STARTED"]
+    assert [event["attempt"] for event in started] == [1, 2]
+    assert {event["related_entity_id"] for event in started} == {"brief-1"}
+
+
+@pytest.mark.asyncio
+async def test_deepseek_records_timeout_without_request_content() -> None:
+    class TimeoutClient:
+        async def ainvoke(self, input: object, **kwargs: object) -> object:
+            del input, kwargs
+            raise TimeoutError
+
+    recorder = MemoryExternalCallRecorder()
+    provider = DeepSeekProvider(client=TimeoutClient(), recorder=recorder)
+    brief = Brief(
+        id="brief-1",
+        run_id="run-1",
+        customer_name="示例客户",
+        scenario="首次交流",
+        known_context="公开信息",
+        research_goal="核验事实",
+    )
+
+    with pytest.raises(TimeoutError):
+        await provider.plan(brief)
+
+    assert recorder.started_count("deepseek") == 1
+    assert recorder.finished_statuses("deepseek") == ["TIMEOUT"]
 
 
 @pytest.mark.asyncio

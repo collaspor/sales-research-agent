@@ -12,7 +12,7 @@ import typer
 from pydantic import ValidationError
 
 from sales_research_agent.config import Settings
-from sales_research_agent.domain.models import Brief, RunMetadata
+from sales_research_agent.domain.models import CURRENT_RUNTIME_VERSION, Brief, RunMetadata
 from sales_research_agent.infrastructure.artifacts import ArtifactStore
 from sales_research_agent.infrastructure.sqlite_repository import SQLiteRepository
 from sales_research_agent.infrastructure.telemetry import (
@@ -27,7 +27,6 @@ from sales_research_agent.providers.tavily import TavilySearchProvider
 from sales_research_agent.sources.authority import SourceAuthorityPolicy
 
 app = typer.Typer(help="Evidence-driven public web research POC.", no_args_is_help=True)
-CURRENT_RUNTIME_VERSION = 2
 
 
 @app.command()
@@ -122,7 +121,9 @@ async def _start_live_run(settings: Settings, payload: dict[str, str], run_id: s
     )
     brief = Brief(id=f"brief-{run_id}", run_id=run_id, **payload)
     await repository.upsert_brief(brief, f"{run_id}:brief:{brief.id}")
-    await _invoke_graph(settings, directory, repository, run_id, resume=False)
+    await _invoke_with_failure_tracking(
+        settings, directory, repository, run_id, resume=False
+    )
 
 
 async def _resume_live_run(settings: Settings, run_id: str) -> None:
@@ -137,7 +138,35 @@ async def _resume_live_run(settings: Settings, run_id: str) -> None:
             f"run runtime version {version} cannot be resumed by version {CURRENT_RUNTIME_VERSION}"
         )
     await repository.initialize()
-    await _invoke_graph(settings, directory, repository, run_id, resume=True)
+    await _invoke_with_failure_tracking(
+        settings, directory, repository, run_id, resume=True
+    )
+
+
+async def _invoke_with_failure_tracking(
+    settings: Settings,
+    directory: Path,
+    repository: SQLiteRepository,
+    run_id: str,
+    *,
+    resume: bool,
+) -> None:
+    """将未收敛的 Graph 异常同步为可信运行终态。"""
+    try:
+        await _invoke_graph(settings, directory, repository, run_id, resume=resume)
+    except Exception:
+        metadata = await repository.get_run_metadata(run_id)
+        if metadata is not None:
+            await repository.save_run_metadata(
+                metadata.model_copy(
+                    update={
+                        "execution_status": "FAILED",
+                        "report_outcome": "FAILED",
+                        "finished_at": datetime.now(UTC),
+                    }
+                )
+            )
+        raise
 
 
 async def _invoke_graph(

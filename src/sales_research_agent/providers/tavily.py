@@ -75,7 +75,13 @@ class TavilySearchProvider(SearchProvider):
         if self._owns_client:
             await self._client.aclose()
 
-    async def search(self, query: str, max_results: int) -> list[SearchResult]:
+    async def search(
+        self,
+        query: str,
+        max_results: int,
+        *,
+        related_entity_id: str | None = None,
+    ) -> list[SearchResult]:
         """在三次尝试预算内查询 Tavily 并转换为候选来源。"""
         payload = {
             "query": query,
@@ -86,7 +92,12 @@ class TavilySearchProvider(SearchProvider):
         }
         for attempt in range(1, MAX_ATTEMPTS + 1):
             self.call_count += 1
-            call_id = await self._recorder.start(provider="tavily", operation="search")
+            call_id = await self._recorder.start(
+                provider="tavily",
+                operation="search",
+                attempt=attempt,
+                related_entity_id=related_entity_id,
+            )
             try:
                 response = await self._client.post(
                     TAVILY_SEARCH_URL,

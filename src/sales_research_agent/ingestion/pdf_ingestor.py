@@ -28,7 +28,7 @@ class PdfIngestor:
         self._repository = repository
 
     async def ingest(self, run_id: str, source_id: str, url: str) -> IngestionResult:
-        fetched = await self._fetcher.fetch(url)
+        fetched = await self._fetcher.fetch(url, related_entity_id=source_id)
         if fetched.failure is not None:
             return await self._record_failure(run_id, source_id, fetched.failure.code, fetched.failure.retryable, fetched.failure.message)
         if fetched.body is None or fetched.final_url is None or fetched.status_code is None:
@@ -40,7 +40,11 @@ class PdfIngestor:
         raw_ref = self._artifacts.write_bytes(run_id, f"sources/{source_id}/{digest}.pdf", fetched.body, media_type="application/pdf")
         raw_ref = raw_ref.model_copy(update={"id": await self._repository.upsert_artifact_ref(raw_ref, f"{run_id}:raw:{source_id}:{digest}")})
         try:
-            parsed = await self._parser.parse(fetched.body, fetched.final_url)
+            parsed = await self._parser.parse(
+                fetched.body,
+                fetched.final_url,
+                related_entity_id=source_id,
+            )
         except (MinerUError, RuntimeError) as error:
             return await self._record_failure(run_id, source_id, "PDF_PARSE_FAILED", True, str(error))
         if not parsed.text.strip():

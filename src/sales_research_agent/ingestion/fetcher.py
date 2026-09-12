@@ -56,7 +56,12 @@ class Fetcher:
         self._recorder = recorder or NullExternalCallRecorder()
         self._timeout = httpx.Timeout(connect=5.0, read=15.0, write=15.0, pool=15.0)
 
-    async def fetch(self, url: str) -> FetchResult:
+    async def fetch(
+        self,
+        url: str,
+        *,
+        related_entity_id: str | None = None,
+    ) -> FetchResult:
         """获取页面，并在每个重定向目标再次执行 URL 安全校验。"""
         current_url = url
         redirects = 0
@@ -66,7 +71,7 @@ class Fetcher:
             except UnsafeUrlError:
                 return self._failure("URL_BLOCKED", False, "URL is not a public target", current_url)
 
-            result, redirect_to = await self._fetch_url(current_url)
+            result, redirect_to = await self._fetch_url(current_url, related_entity_id)
             if result is not None:
                 return result
             if redirect_to is None:
@@ -78,9 +83,18 @@ class Fetcher:
             redirects += 1
             current_url = urljoin(current_url, redirect_to)
 
-    async def _fetch_url(self, url: str) -> tuple[FetchResult | None, str | None]:
+    async def _fetch_url(
+        self,
+        url: str,
+        related_entity_id: str | None,
+    ) -> tuple[FetchResult | None, str | None]:
         for attempt in range(1, MAX_ATTEMPTS + 1):
-            call_id = await self._recorder.start(provider="fetcher", operation="fetch")
+            call_id = await self._recorder.start(
+                provider="fetcher",
+                operation="fetch",
+                attempt=attempt,
+                related_entity_id=related_entity_id,
+            )
             try:
                 async with self.client.stream(
                     "GET", url, follow_redirects=False, timeout=self._timeout

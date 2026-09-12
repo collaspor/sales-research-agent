@@ -11,6 +11,7 @@ SourceAuthority = Literal["OFFICIAL_PRIMARY", "TRUSTED_SECONDARY", "UNCLASSIFIED
 ContentKind = Literal["HTML", "PDF", "UNKNOWN"]
 ExecutionStatus = Literal["RUNNING", "FINISHED", "FAILED"]
 ReportOutcome = Literal["COMPLETED", "PARTIAL", "NEEDS_REVIEW", "FAILED"]
+CURRENT_RUNTIME_VERSION = 2
 
 
 class DomainModel(BaseModel):
