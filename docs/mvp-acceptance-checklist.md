@@ -22,7 +22,8 @@ POC 已验证核心 Agent 链路、证据可信度门禁、网页/PDF 摄取、�
 | 售前人工审阅 | 通过 | 海尔和比亚迪批准 Fact 均已逐条核对 Evidence |
 | 并行实体隔离 | 通过 | Claim、Verification、Failure 和模型响应制品按问题与来源确定性隔离 |
 | 共享来源问题覆盖 | 通过 | 同一来源只摄取一次，并对全部关联研究问题分别执行可信管线 |
-| 运行遥测 | 离线通过 | 外部请求使用 started/finished 事件持久化；真实公网计数待下一次授权运行复核 |
+| 运行遥测 | 真实通过 | 比亚迪运行记录 44 对 started/finished：搜索 4、HTTP 6、PDF 4、模型 30，0 个中断调用 |
+| 多编码 HTML 证据 | 未通过 | 一个 GBK 页面产生 8 条乱码 Evidence，仍进入批准 Claim；需增加编码识别与乱码质量门禁 |
 | 历史运行兼容 | 通过 | version 1 可 inspect 且不改写旧 Schema；新版明确拒绝 resume |
 
 ## MVP 完成定义
@@ -48,7 +49,19 @@ POC 已验证核心 Agent 链路、证据可信度门禁、网页/PDF 摄取、�
 - MinerU 的非法 JSON 或响应结构记录为 `SCHEMA_ERROR`，不再误计为成功；
 - `inspect` 保持原字段并增加版本、终态、耗时、调用次数及中断调用数；
 - CLI 测试不再读取项目本地 `.env`；
-- 本轮只完成离线回归，没有发起真实 Provider 调用。真实运行指标需要在用户授权后补充。
+- 真实 Provider 验收已执行，调用遥测、唯一调用 ID、实体 operation key 和敏感信息扫描通过；内容编码质量门禁未通过，详见下节。
+
+## 2026-09-12 P0 真实公网验收
+
+- 案例：比亚迪首次交流；run id：`31f626ce-5fd6-48dc-8bf8-794c8bdd3b68`；
+- 耗时 64.92 秒，runtime version 2，执行状态 `FINISHED`，报告结果 `PARTIAL`；
+- 6 个来源中 4 个成功、2 个失败，失败分别为 `HTTP_403` 和 `EMPTY_CONTENT`；
+- 44 次真实外部请求全部形成 started/finished 闭环：Tavily 4、Fetcher 6、MinerU 4、DeepSeek 30，调用 ID 均唯一；
+- Source、Evidence、Claim、Verification、Gap、Failure 的 operation key 均无重复；
+- 扫描 43 个运行文件，未发现实际 API 密钥、`Bearer ` 字面量或遥测白名单外字段；
+- 生成 Markdown 与 HTML 报告，共 21 条批准事实和 23 条报告 Evidence；
+- 一个来源实际为 GBK 编码，当前提取链路产生 8 条乱码 Evidence。这些 Evidence 仍支撑批准 Claim，说明还需要“编码识别 + 乱码拒绝”质量门禁；
+- 本次所选来源均为未确认来源等级，且来源没有跨问题复用，因此官方来源覆盖和共享来源真实场景仍未得到本次运行验证；相应离线测试保持通过。
 
 ## 暂不纳入 MVP
 
