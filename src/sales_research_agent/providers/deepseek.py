@@ -7,6 +7,10 @@ from pydantic import BaseModel, SecretStr, ValidationError
 
 from sales_research_agent.config import Settings
 from sales_research_agent.domain.models import Brief, DocumentBlock, Evidence, ResearchQuestion
+from sales_research_agent.infrastructure.telemetry import (
+    ExternalCallRecorder,
+    NullExternalCallRecorder,
+)
 from sales_research_agent.providers.base import (
     ClaimCandidate,
     ClaimSynthesis,
@@ -35,7 +39,13 @@ class ProviderSchemaError(ProviderPermanentError):
 class DeepSeekProvider(ResearchModel):
     """以 JSON object 模式调用 DeepSeek，并限制格式修正次数。"""
 
-    def __init__(self, *, client: AsyncChatClient | None = None, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        client: AsyncChatClient | None = None,
+        settings: Settings | None = None,
+        recorder: ExternalCallRecorder | None = None,
+    ) -> None:
         if client is None:
             resolved_settings = settings or Settings()
             if not resolved_settings.deepseek_api_key:
@@ -49,6 +59,7 @@ class DeepSeekProvider(ResearchModel):
                 ),
             )
         self._client = client
+        self._recorder = recorder or NullExternalCallRecorder()
         self.call_count = 0
         self.call_stats = ProviderCallStats()
 
@@ -95,16 +106,25 @@ class DeepSeekProvider(ResearchModel):
         for attempt in range(2):
             self.call_count += 1
             self.call_stats = self.call_stats.model_copy(update={"model_calls": self.call_count})
-            response = await self._client.ainvoke(
-                messages,
-                response_format={"type": "json_object"},
-            )
+            call_id = await self._recorder.start(provider="deepseek", operation=operation)
+            try:
+                response = await self._client.ainvoke(
+                    messages,
+                    response_format={"type": "json_object"},
+                )
+            except Exception:
+                await self._recorder.finish(call_id, status="ERROR")
+                raise
             content = getattr(response, "content", None)
             if isinstance(content, str) and content.strip():
                 try:
-                    return output_type.model_validate_json(content)
+                    parsed = output_type.model_validate_json(content)
                 except ValidationError:
                     pass
+                else:
+                    await self._recorder.finish(call_id, status="SUCCESS")
+                    return parsed
+            await self._recorder.finish(call_id, status="SCHEMA_ERROR")
             if attempt == 0:
                 self.call_stats = self.call_stats.model_copy(
                     update={"schema_retries": self.call_stats.schema_retries + 1}

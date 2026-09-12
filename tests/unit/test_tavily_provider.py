@@ -12,6 +12,7 @@ from sales_research_agent.providers.tavily import (
     ProviderRetriableError,
     TavilySearchProvider,
 )
+from tests.fakes import MemoryExternalCallRecorder
 
 
 def _fixture_payload() -> dict[str, object]:
@@ -95,13 +96,18 @@ async def test_tavily_retries_transient_failures_within_three_attempts(failure: 
             return httpx.Response(503)
         return httpx.Response(200, json=_fixture_payload())
 
-    provider = TavilySearchProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+    recorder = MemoryExternalCallRecorder()
+    provider = TavilySearchProvider(
+        api_key="test-key", transport=httpx.MockTransport(handler), recorder=recorder
+    )
 
     results = await provider.search("query", max_results=1)
 
     assert len(results) == 1
     assert calls == 3
     assert provider.call_count == 3
+    assert recorder.started_count("tavily") == 3
+    assert recorder.finished_statuses("tavily")[-1] == "SUCCESS"
 
 
 @pytest.mark.asyncio

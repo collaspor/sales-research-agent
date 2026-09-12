@@ -5,6 +5,10 @@ import asyncio
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from sales_research_agent.infrastructure.telemetry import (
+    ExternalCallRecorder,
+    NullExternalCallRecorder,
+)
 from sales_research_agent.providers.base import SearchProvider, SearchResult
 
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
@@ -56,12 +60,14 @@ class TavilySearchProvider(SearchProvider):
         *,
         client: httpx.AsyncClient | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        recorder: ExternalCallRecorder | None = None,
     ) -> None:
         if client is not None and transport is not None:
             raise ValueError("provide either client or transport, not both")
         self._client = client or httpx.AsyncClient(transport=transport, timeout=TAVILY_TIMEOUT)
         self._owns_client = client is None
         self._api_key = api_key
+        self._recorder = recorder or NullExternalCallRecorder()
         self.call_count = 0
 
     async def aclose(self) -> None:
@@ -80,6 +86,7 @@ class TavilySearchProvider(SearchProvider):
         }
         for attempt in range(1, MAX_ATTEMPTS + 1):
             self.call_count += 1
+            call_id = await self._recorder.start(provider="tavily", operation="search")
             try:
                 response = await self._client.post(
                     TAVILY_SEARCH_URL,
@@ -88,19 +95,27 @@ class TavilySearchProvider(SearchProvider):
                 )
                 self._raise_for_status(response.status_code)
             except httpx.TimeoutException as error:
+                await self._recorder.finish(call_id, status="TIMEOUT")
                 if attempt == MAX_ATTEMPTS:
                     raise ProviderRetriableError("tavily request timed out") from error
             except httpx.RequestError as error:
+                await self._recorder.finish(call_id, status="NETWORK_ERROR")
                 if attempt == MAX_ATTEMPTS:
                     raise ProviderRetriableError("tavily request failed") from error
             except ProviderRetriableError:
+                await self._recorder.finish(call_id, status=f"HTTP_{response.status_code}")
                 if attempt == MAX_ATTEMPTS:
                     raise
+            except ProviderError:
+                await self._recorder.finish(call_id, status=f"HTTP_{response.status_code}")
+                raise
             else:
                 try:
                     parsed = _TavilyPayload.model_validate(response.json())
                 except (ValidationError, ValueError) as error:
+                    await self._recorder.finish(call_id, status="SCHEMA_ERROR")
                     raise ProviderPermanentError("tavily returned an invalid response") from error
+                await self._recorder.finish(call_id, status="SUCCESS")
                 return [
                     SearchResult(
                         url=result.url,

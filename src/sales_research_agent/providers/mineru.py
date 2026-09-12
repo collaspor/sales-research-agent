@@ -8,6 +8,10 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from sales_research_agent.infrastructure.telemetry import (
+    ExternalCallRecorder,
+    NullExternalCallRecorder,
+)
 from sales_research_agent.providers.base import ParsedPdf, PdfParser
 
 MAX_ATTEMPTS = 3
@@ -61,6 +65,7 @@ class MinerUPdfParser(PdfParser):
         poll_interval: float = 0.0,
         poll_timeout: float = 300.0,
         client: httpx.AsyncClient | None = None,
+        recorder: ExternalCallRecorder | None = None,
     ) -> None:
         if not api_key:
             raise MinerUConfigurationError("MINERU_API_KEY is required for PDF parsing")
@@ -70,6 +75,7 @@ class MinerUPdfParser(PdfParser):
         self._poll_timeout = poll_timeout
         self._client = client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
         self._owns_client = client is None
+        self._recorder = recorder or NullExternalCallRecorder()
         self.call_count = 0
 
     async def aclose(self) -> None:
@@ -121,25 +127,35 @@ class MinerUPdfParser(PdfParser):
     async def _request(self, method: str, url: str, payload: dict[str, Any] | None = None) -> httpx.Response:
         for attempt in range(1, MAX_ATTEMPTS + 1):
             self.call_count += 1
+            operation = "submit" if method == "POST" else (
+                "poll" if "/extract/task/" in url else "download"
+            )
+            call_id = await self._recorder.start(provider="mineru", operation=operation)
             try:
                 response = await self._client.request(
                     method, url, json=payload, headers={"Authorization": f"Bearer {self._api_key}"}
                 )
             except httpx.TimeoutException as error:
+                await self._recorder.finish(call_id, status="TIMEOUT")
                 if attempt == MAX_ATTEMPTS:
                     raise MinerURetriableError("mineru request timed out") from error
                 continue
             except httpx.RequestError as error:
+                await self._recorder.finish(call_id, status="NETWORK_ERROR")
                 if attempt == MAX_ATTEMPTS:
                     raise MinerURetriableError("mineru request failed") from error
                 continue
             if response.status_code in {401, 403}:
+                await self._recorder.finish(call_id, status=f"HTTP_{response.status_code}")
                 raise MinerUConfigurationError("mineru rejected provider configuration")
             if response.status_code == 429 or response.status_code >= 500:
+                await self._recorder.finish(call_id, status=f"HTTP_{response.status_code}")
                 if attempt == MAX_ATTEMPTS:
                     raise MinerURetriableError("mineru service is temporarily unavailable")
                 continue
             if response.status_code >= 400:
+                await self._recorder.finish(call_id, status=f"HTTP_{response.status_code}")
                 raise MinerUError("mineru rejected the request")
+            await self._recorder.finish(call_id, status="SUCCESS")
             return response
         raise MinerURetriableError("mineru request failed")

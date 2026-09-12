@@ -1,6 +1,10 @@
 import httpx
 import pytest
 
+from sales_research_agent.ingestion.fetcher import Fetcher
+from sales_research_agent.ingestion.url_policy import UrlPolicy
+from tests.fakes import MemoryExternalCallRecorder
+
 
 @pytest.mark.asyncio
 async def test_fetcher_retries_rate_limit_at_most_three_times(run_store) -> None:
@@ -27,12 +31,18 @@ async def test_fetcher_retries_timeout_at_most_three_times(run_store) -> None:
         return httpx.Response(200, headers={"content-type": "text/html"}, content=b"<p>ok</p>")
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    run_store.fetcher.client = client
+    recorder = MemoryExternalCallRecorder()
+    policy = UrlPolicy(
+        resolver=lambda host: ["93.184.216.34"] if host == "fixture.test" else []
+    )
+    run_store.fetcher = Fetcher(client, policy, recorder=recorder)
 
     fetched = await run_store.fetcher.fetch("https://fixture.test/article")
 
     assert fetched.failure is None
     assert calls == 3
+    assert recorder.started_count("fetcher") == 3
+    assert recorder.finished_statuses("fetcher") == ["TIMEOUT", "TIMEOUT", "SUCCESS"]
     await client.aclose()
 
 

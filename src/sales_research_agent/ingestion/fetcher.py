@@ -6,6 +6,10 @@ from urllib.parse import urljoin
 
 import httpx
 
+from sales_research_agent.infrastructure.telemetry import (
+    ExternalCallRecorder,
+    NullExternalCallRecorder,
+)
 from sales_research_agent.ingestion.url_policy import UnsafeUrlError, UrlPolicy
 
 MAX_REDIRECTS = 5
@@ -40,9 +44,16 @@ class FetchResult:
 class Fetcher:
     """只获取经 URL 策略验证的、有界 HTML 响应。"""
 
-    def __init__(self, client: httpx.AsyncClient, url_policy: UrlPolicy) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        url_policy: UrlPolicy,
+        *,
+        recorder: ExternalCallRecorder | None = None,
+    ) -> None:
         self.client = client
         self._url_policy = url_policy
+        self._recorder = recorder or NullExternalCallRecorder()
         self._timeout = httpx.Timeout(connect=5.0, read=15.0, write=15.0, pool=15.0)
 
     async def fetch(self, url: str) -> FetchResult:
@@ -69,11 +80,15 @@ class Fetcher:
 
     async def _fetch_url(self, url: str) -> tuple[FetchResult | None, str | None]:
         for attempt in range(1, MAX_ATTEMPTS + 1):
+            call_id = await self._recorder.start(provider="fetcher", operation="fetch")
             try:
                 async with self.client.stream(
                     "GET", url, follow_redirects=False, timeout=self._timeout
                 ) as response:
                     if response.status_code == 429 or response.status_code >= 500:
+                        await self._recorder.finish(
+                            call_id, status=f"HTTP_{response.status_code}"
+                        )
                         if attempt < MAX_ATTEMPTS:
                             await asyncio.sleep(0)
                             continue
@@ -88,6 +103,7 @@ class Fetcher:
                             None,
                         )
                     if 300 <= response.status_code < 400:
+                        await self._recorder.finish(call_id, status="REDIRECT")
                         location = response.headers.get("location")
                         if location:
                             return None, location
@@ -102,6 +118,9 @@ class Fetcher:
                             None,
                         )
                     if response.status_code >= 400:
+                        await self._recorder.finish(
+                            call_id, status=f"HTTP_{response.status_code}"
+                        )
                         return (
                             self._failure(
                                 f"HTTP_{response.status_code}",
@@ -118,6 +137,7 @@ class Fetcher:
                         "PDF" if content_type == "application/pdf" else None
                     )
                     if content_kind is None:
+                        await self._recorder.finish(call_id, status="UNSUPPORTED_CONTENT_TYPE")
                         return (
                             self._failure(
                                 "UNSUPPORTED_CONTENT_TYPE",
@@ -129,6 +149,7 @@ class Fetcher:
                             None,
                         )
                     if _is_too_large(response.headers.get("content-length")):
+                        await self._recorder.finish(call_id, status="RESPONSE_TOO_LARGE")
                         return (
                             self._failure(
                                 "RESPONSE_TOO_LARGE",
@@ -141,6 +162,7 @@ class Fetcher:
                         )
                     body = await self._read_bounded_body(response)
                     if body is None:
+                        await self._recorder.finish(call_id, status="RESPONSE_TOO_LARGE")
                         return (
                             self._failure(
                                 "RESPONSE_TOO_LARGE",
@@ -151,6 +173,7 @@ class Fetcher:
                             ),
                             None,
                         )
+                    await self._recorder.finish(call_id, status="SUCCESS")
                     return (
                         FetchResult(
                             final_url=str(response.url),
@@ -162,11 +185,13 @@ class Fetcher:
                         None,
                     )
             except httpx.TimeoutException:
+                await self._recorder.finish(call_id, status="TIMEOUT")
                 if attempt < MAX_ATTEMPTS:
                     await asyncio.sleep(0)
                     continue
                 return self._failure("FETCH_TIMEOUT", True, "request timed out", url), None
             except httpx.HTTPError:
+                await self._recorder.finish(call_id, status="NETWORK_ERROR")
                 return self._failure("FETCH_NETWORK_ERROR", False, "network request failed", url), None
         return self._failure("FETCH_FAILED", False, "fetch did not complete", url), None
 

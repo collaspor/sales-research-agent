@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 from sales_research_agent.providers.mineru import MinerUPdfParser, MinerURetriableError
+from tests.fakes import MemoryExternalCallRecorder
 
 
 @pytest.mark.asyncio
@@ -21,11 +22,14 @@ async def test_mineru_url_task_returns_markdown_after_done_poll() -> None:
         return httpx.Response(200, content=archive.getvalue())
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    parser = MinerUPdfParser(api_key="test-key", client=client)
+    recorder = MemoryExternalCallRecorder()
+    parser = MinerUPdfParser(api_key="test-key", client=client, recorder=recorder)
     result = await parser.parse(b"%PDF", "https://public.example/a.pdf")
     await client.aclose()
     assert result.task_id == "task-1"
     assert result.text == "# parsed\nRevenue 10%"
+    assert recorder.started_count("mineru") == 3
+    assert recorder.finished_statuses("mineru") == ["SUCCESS", "SUCCESS", "SUCCESS"]
 
 
 @pytest.mark.asyncio

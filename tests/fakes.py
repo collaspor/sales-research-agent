@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TypeVar
+from uuid import uuid4
 
 import httpx
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -29,6 +30,48 @@ from sales_research_agent.providers.base import (
 )
 
 QueueValue = TypeVar("QueueValue")
+
+
+class MemoryExternalCallRecorder:
+    """在内存中保留 Provider 调用事件，供离线契约测试断言。"""
+
+    def __init__(self) -> None:
+        self.events: list[dict[str, str]] = []
+
+    async def start(self, *, provider: str, operation: str) -> str:
+        call_id = str(uuid4())
+        self.events.append(
+            {
+                "event_type": "CALL_STARTED",
+                "call_id": call_id,
+                "provider": provider,
+                "operation": operation,
+            }
+        )
+        return call_id
+
+    async def finish(self, call_id: str, *, status: str) -> None:
+        self.events.append(
+            {"event_type": "CALL_FINISHED", "call_id": call_id, "status": status}
+        )
+
+    def started_count(self, provider: str) -> int:
+        return sum(
+            event.get("event_type") == "CALL_STARTED" and event.get("provider") == provider
+            for event in self.events
+        )
+
+    def finished_statuses(self, provider: str) -> list[str]:
+        call_ids = {
+            event["call_id"]
+            for event in self.events
+            if event.get("event_type") == "CALL_STARTED" and event.get("provider") == provider
+        }
+        return [
+            event["status"]
+            for event in self.events
+            if event.get("event_type") == "CALL_FINISHED" and event.get("call_id") in call_ids
+        ]
 
 @dataclass(frozen=True, slots=True)
 class FakeChatResponse:

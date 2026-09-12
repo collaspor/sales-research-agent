@@ -6,7 +6,7 @@ import pytest
 
 from sales_research_agent.domain.models import Brief, DocumentBlock, Evidence, ResearchQuestion
 from sales_research_agent.providers.deepseek import DeepSeekProvider
-from tests.fakes import SequenceChatModel
+from tests.fakes import MemoryExternalCallRecorder, SequenceChatModel
 
 
 def _plan_json() -> str:
@@ -18,7 +18,8 @@ def _plan_json() -> str:
 @pytest.mark.asyncio
 async def test_deepseek_retries_one_empty_json_response() -> None:
     client = SequenceChatModel(["", _plan_json()])
-    provider = DeepSeekProvider(client=client)
+    recorder = MemoryExternalCallRecorder()
+    provider = DeepSeekProvider(client=client, recorder=recorder)
     brief = Brief(
         id="brief-1",
         run_id="run-1",
@@ -38,6 +39,8 @@ async def test_deepseek_retries_one_empty_json_response() -> None:
     assert isinstance(messages, list)
     assert messages[0]["role"] == "system"
     assert "JSON" in messages[0]["content"]
+    assert recorder.started_count("deepseek") == 2
+    assert recorder.finished_statuses("deepseek") == ["SCHEMA_ERROR", "SUCCESS"]
 
 
 @pytest.mark.asyncio
