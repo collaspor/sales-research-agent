@@ -17,6 +17,7 @@ from sales_research_agent.domain.models import (
     Gap,
     ReportVersion,
     ResearchQuestion,
+    RunMetadata,
     RunStats,
     Source,
     SourceRevision,
@@ -94,6 +95,14 @@ class SQLiteRepository(DomainRepository):
             await connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS run_stats (
+                    run_id TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL
+                )
+                """
+            )
+            await connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS run_metadata (
                     run_id TEXT PRIMARY KEY,
                     payload TEXT NOT NULL
                 )
@@ -216,6 +225,36 @@ class SQLiteRepository(DomainRepository):
                 (run_id, json.dumps(event, ensure_ascii=False, sort_keys=True)),
             )
             await connection.commit()
+
+    async def list_audit_events(self, run_id: str) -> list[dict[str, object]]:
+        """按发生顺序读取一个运行的追加式审计事件。"""
+        async with self._connect() as connection:
+            cursor = await connection.execute(
+                "SELECT payload FROM audit_events WHERE run_id = ? ORDER BY id", (run_id,)
+            )
+            rows = await cursor.fetchall()
+            return [json.loads(row[0]) for row in rows]
+
+    async def save_run_metadata(self, metadata: RunMetadata) -> None:
+        """保存运行版本与生命周期，不依赖 LangGraph checkpoint。"""
+        async with self._connect() as connection:
+            await connection.execute("BEGIN")
+            await connection.execute(
+                """
+                INSERT INTO run_metadata (run_id, payload) VALUES (?, ?)
+                ON CONFLICT(run_id) DO UPDATE SET payload = excluded.payload
+                """,
+                (metadata.run_id, self._payload(metadata)),
+            )
+            await connection.commit()
+
+    async def get_run_metadata(self, run_id: str) -> RunMetadata | None:
+        async with self._connect() as connection:
+            cursor = await connection.execute(
+                "SELECT payload FROM run_metadata WHERE run_id = ?", (run_id,)
+            )
+            row = await cursor.fetchone()
+            return RunMetadata.model_validate_json(row[0]) if row is not None else None
 
     async def save_stats(self, stats: RunStats) -> None:
         async with self._connect() as connection:

@@ -13,6 +13,7 @@ from sales_research_agent.domain.models import (
     Gap,
     ReportVersion,
     ResearchQuestion,
+    RunMetadata,
     RunStats,
     Source,
     SourceRevision,
@@ -151,6 +152,15 @@ class DomainRepository(ABC):
 
     @abstractmethod
     async def append_audit_event(self, run_id: str, event: dict[str, object]) -> None: ...
+
+    @abstractmethod
+    async def list_audit_events(self, run_id: str) -> list[dict[str, object]]: ...
+
+    @abstractmethod
+    async def save_run_metadata(self, metadata: RunMetadata) -> None: ...
+
+    @abstractmethod
+    async def get_run_metadata(self, run_id: str) -> RunMetadata | None: ...
 
     @abstractmethod
     async def save_stats(self, stats: RunStats) -> None: ...

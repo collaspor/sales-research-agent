@@ -9,6 +9,8 @@ UppercaseValue = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z_]*$")]
 FailureCode = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z0-9_]*$")]
 SourceAuthority = Literal["OFFICIAL_PRIMARY", "TRUSTED_SECONDARY", "UNCLASSIFIED"]
 ContentKind = Literal["HTML", "PDF", "UNKNOWN"]
+ExecutionStatus = Literal["RUNNING", "FINISHED", "FAILED"]
+ReportOutcome = Literal["COMPLETED", "PARTIAL", "NEEDS_REVIEW", "FAILED"]
 
 
 class DomainModel(BaseModel):
@@ -150,12 +152,24 @@ class RunStats(DomainModel):
     search_calls: int
     http_calls: int
     model_calls: int
+    pdf_calls: int = 0
     sources_succeeded: int
     sources_failed: int
     claims_approved: int
     claims_rejected: int
     official_sources_succeeded: int = 0
     secondary_sources_succeeded: int = 0
+
+
+class RunMetadata(DomainModel):
+    """独立于 checkpoint 的运行兼容版本与生命周期摘要。"""
+
+    run_id: str
+    runtime_version: int
+    execution_status: ExecutionStatus
+    report_outcome: ReportOutcome | None
+    started_at: datetime
+    finished_at: datetime | None
 
 
 class ReportVersion(DomainModel):
