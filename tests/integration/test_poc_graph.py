@@ -28,3 +28,21 @@ async def test_source_fanout_respects_configured_concurrency(poc_harness) -> Non
     await poc_harness.run(max_concurrency=3)
 
     assert poc_harness.fetcher.peak_concurrency <= 3
+
+
+@pytest.mark.asyncio
+async def test_shared_source_researches_every_linked_question(poc_harness) -> None:
+    poc_harness.configure_shared_source_questions()
+
+    await poc_harness.run()
+
+    assert poc_harness.fetcher.calls == ["https://example.com/shared"]
+    assert [call[0].id for call in poc_harness.model.evidence_calls] == [
+        "question-0",
+        "question-1",
+    ]
+    claims = await poc_harness.repository.list_claims(poc_harness.run_id)
+    assert {claim.id for claim in claims} == {
+        "claim-question-0-source-0-0",
+        "claim-question-1-source-0-0",
+    }

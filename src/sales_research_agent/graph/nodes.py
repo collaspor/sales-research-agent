@@ -110,26 +110,34 @@ def make_nodes(services: Any) -> dict[str, Any]:
         await services.repository.upsert_document_block(
             block, f"{state['run_id']}:document-block:{block.id}"
         )
-        question_id = source.discovered_by_question_ids[0]
-        question = await services.repository.get_research_question(question_id)
         briefs = await services.repository.list_briefs(state["run_id"])
-        if question is None or len(briefs) != 1:
+        if len(briefs) != 1:
             raise ValueError("persisted Graph inputs are incomplete")
         brief = briefs[0]
-        pipeline = ResearchPipeline(
-            repository=services.repository,
-            artifacts=services.artifacts,
-            model=services.model,
-            brief=brief,
-            question=question,
-            source_id=source_id,
-        )
-        pipeline_result = await pipeline.run(block_ids=[block.id])
+        approved_claim_ids: list[str] = []
+        gap_ids: list[str] = []
+        failure_ids: list[str] = []
+        for question_id in source.discovered_by_question_ids:
+            question = await services.repository.get_research_question(question_id)
+            if question is None:
+                raise ValueError("persisted Graph inputs are incomplete")
+            pipeline = ResearchPipeline(
+                repository=services.repository,
+                artifacts=services.artifacts,
+                model=services.model,
+                brief=brief,
+                question=question,
+                source_id=source_id,
+            )
+            pipeline_result = await pipeline.run(block_ids=[block.id])
+            approved_claim_ids.extend(pipeline_result.approved_claim_ids)
+            gap_ids.extend(pipeline_result.gap_ids)
+            failure_ids.extend(pipeline_result.failure_ids)
         return {
             "successful_source_ids": [source_id],
-            "approved_claim_ids": pipeline_result.approved_claim_ids,
-            "gap_ids": pipeline_result.gap_ids,
-            "failure_ids": pipeline_result.failure_ids,
+            "approved_claim_ids": approved_claim_ids,
+            "gap_ids": gap_ids,
+            "failure_ids": failure_ids,
         }
 
     async def publish(state: dict[str, Any]) -> dict[str, object]:

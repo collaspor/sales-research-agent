@@ -302,6 +302,63 @@ class PocHarness:
         if self.search._responses:
             self.search._responses[0].append(SearchResult(url=url, title="Fail", snippet=""))
 
+    def configure_shared_source_questions(self) -> None:
+        """配置两个研究问题共享同一来源的离线场景。"""
+        self.search._responses.clear()
+        self.model.plan_responses.clear()
+        self.model.evidence_responses.clear()
+        self.model.claim_responses.clear()
+        self.model.verification_responses.clear()
+        shared = SearchResult(url="https://example.com/shared", title="Shared", snippet="")
+        self.search.queue_results([shared])
+        self.search.queue_results([shared])
+        self.model.queue_plan(
+            ResearchPlan(
+                questions=[
+                    PlannedQuestion(
+                        text="问题一",
+                        purpose="核验事实一",
+                        preferred_source_types=["WEB"],
+                        completion_criteria="一条事实",
+                    ),
+                    PlannedQuestion(
+                        text="问题二",
+                        purpose="核验事实二",
+                        preferred_source_types=["WEB"],
+                        completion_criteria="一条事实",
+                    ),
+                ]
+            )
+        )
+        for question_id in ("question-0", "question-1"):
+            evidence_id = f"evidence-{question_id}-source-0-0"
+            self.model.queue_evidence(
+                EvidenceExtraction(
+                    candidates=[
+                        EvidenceCandidate(
+                            document_block_id="source-0-block-0",
+                            quote="2025 year company published annual report.",
+                            rationale="direct quote",
+                        )
+                    ]
+                )
+            )
+            self.model.queue_claims(
+                ClaimSynthesis(
+                    claims=[
+                        ClaimCandidate(
+                            kind="FACT",
+                            text=f"{question_id} received a supported fact.",
+                            evidence_ids=[evidence_id],
+                            upstream_claim_ids=[],
+                        )
+                    ]
+                )
+            )
+            self.model.queue_verification(
+                SupportVerification(decision="SUPPORTED", reason="direct")
+            )
+
     async def close(self) -> None:
         await self._saver_context.__aexit__(None, None, None)
 
