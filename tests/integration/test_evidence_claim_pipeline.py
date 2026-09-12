@@ -40,6 +40,7 @@ async def pipeline(repository: SQLiteRepository, tmp_path: Path) -> ResearchPipe
             preferred_source_types=["WEB"],
             completion_criteria="有一条已核验证据",
         ),
+        source_id="source-1",
     )
 
 
@@ -80,7 +81,7 @@ async def test_pipeline_only_approves_supported_located_fact(
                 ClaimCandidate(
                     kind="FACT",
                     text="公司于2025年发布年度报告。",
-                    evidence_ids=["evidence-block-1-0"],
+                    evidence_ids=["evidence-question-1-source-1-0"],
                     upstream_claim_ids=[],
                 )
             ]
@@ -90,7 +91,7 @@ async def test_pipeline_only_approves_supported_located_fact(
 
     result = await pipeline.run(block_ids=[block.id])
 
-    assert result.approved_claim_ids == ["claim-0"]
+    assert result.approved_claim_ids == ["claim-question-1-source-1-0"]
     assert result.gap_ids == []
     assert len(await repository.list_evidence("run-1")) == 1
     assert (await repository.list_claims("run-1"))[0].status == "APPROVED"

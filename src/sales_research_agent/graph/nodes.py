@@ -122,6 +122,7 @@ def make_nodes(services: Any) -> dict[str, Any]:
             model=services.model,
             brief=brief,
             question=question,
+            source_id=source_id,
         )
         pipeline_result = await pipeline.run(block_ids=[block.id])
         return {

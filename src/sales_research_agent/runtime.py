@@ -50,13 +50,16 @@ class ResearchPipeline:
         model: ResearchModel,
         brief: Brief,
         question: ResearchQuestion,
+        source_id: str,
     ) -> None:
         self._repository = repository
         self._artifacts = artifacts
         self.model = model
         self._brief = brief
         self._question = question
+        self._source_id = source_id
         self._gap_count = 0
+        self._failure_count = 0
 
     async def run(self, *, block_ids: list[str]) -> PipelineResult:
         """按固定顺序处理正文块，绝不绕过 Evidence 与语义门禁。"""
@@ -148,7 +151,7 @@ class ResearchPipeline:
             located = match is not None
             numeric_ok = numeric_result.ok if numeric_result is not None else False
             evidence = Evidence(
-                id=f"evidence-{candidate.document_block_id}-{index}",
+                id=f"evidence-{self._question.id}-{self._source_id}-{index}",
                 run_id=self._brief.run_id,
                 block_id=candidate.document_block_id,
                 quote=candidate.quote,
@@ -208,7 +211,7 @@ class ResearchPipeline:
                 continue
 
             claim = Claim(
-                id=f"claim-{index}",
+                id=f"claim-{self._question.id}-{self._source_id}-{index}",
                 run_id=self._brief.run_id,
                 kind=candidate.kind,
                 text=candidate.text,
@@ -218,7 +221,7 @@ class ResearchPipeline:
             )
             semantic: str | None = None
             if candidate.kind == "FACT":
-                support = await self._verify_support(candidate, evidence, result)
+                support = await self._verify_support(candidate, evidence, result, claim.id)
                 if support is None:
                     await self._repository.upsert_claim(
                         claim, f"{self._brief.run_id}:claim:{claim.id}"
@@ -260,6 +263,7 @@ class ResearchPipeline:
         candidate: ClaimCandidate,
         evidence: list[Evidence],
         result: PipelineResult,
+        claim_id: str,
     ) -> SupportVerification | None:
         try:
             support = await self.model.verify_support(candidate, evidence)
@@ -279,20 +283,36 @@ class ResearchPipeline:
                 result, "VERIFY_SUPPORT", "MODEL_ERROR", False, self._question.id
             )
             return None
-        await self._save_model_response("verification", 1, support)
+        await self._save_model_response("verification", 1, support, object_id=claim_id)
         return support
 
-    async def _save_model_response(self, operation: str, attempt: int, response: BaseModel) -> None:
+    async def _save_model_response(
+        self,
+        operation: str,
+        attempt: int,
+        response: BaseModel,
+        *,
+        object_id: str | None = None,
+    ) -> None:
         """先脱敏再落盘，避免调试制品成为密钥泄露路径。"""
         content = self._redact_secrets(response.model_dump_json())
+        filename = (
+            f"{operation}-{object_id}-attempt-{attempt}.json"
+            if object_id is not None
+            else f"{operation}-attempt-{attempt}.json"
+        )
         reference = self._artifacts.write_text(
             self._brief.run_id,
-            f"model_responses/{operation}-{attempt}.json",
+            f"model_responses/{self._question.id}/{self._source_id}/{filename}",
             content,
             media_type="application/json; charset=utf-8",
         )
         await self._repository.upsert_artifact_ref(
-            reference, f"{self._brief.run_id}:model-response:{operation}:{attempt}"
+            reference,
+            (
+                f"{self._brief.run_id}:model-response:{self._question.id}:"
+                f"{self._source_id}:{filename}"
+            ),
         )
 
     async def _record_failure(
@@ -303,8 +323,13 @@ class ResearchPipeline:
         retryable: bool,
         related_entity_id: str,
     ) -> None:
+        failure_id = (
+            f"failure-{self._question.id}-{self._source_id}-"
+            f"{operation.lower()}-{self._failure_count}"
+        )
+        self._failure_count += 1
         failure = Failure(
-            id=f"failure-{operation.lower()}",
+            id=failure_id,
             run_id=self._brief.run_id,
             operation=operation,
             code=code,
@@ -313,7 +338,7 @@ class ResearchPipeline:
             related_entity_id=related_entity_id,
         )
         failure_id = await self._repository.upsert_failure(
-            failure, f"{self._brief.run_id}:failure:{operation}:{code}"
+            failure, f"{self._brief.run_id}:failure:{failure.id}"
         )
         result.failure_ids.append(failure_id)
 
@@ -325,12 +350,12 @@ class ResearchPipeline:
         related_claim_ids: list[str] | None = None,
     ) -> None:
         gap = Gap(
-            id=f"gap-{self._question.id}-{self._gap_count}",
+            id=f"gap-{self._question.id}-{self._source_id}-{self._gap_count}",
             run_id=self._brief.run_id,
             question_id=self._question.id,
             code=code,
             description=description,
-            related_source_ids=[],
+            related_source_ids=[self._source_id],
             related_claim_ids=related_claim_ids or [],
         )
         self._gap_count += 1

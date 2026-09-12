@@ -280,13 +280,13 @@ class PocHarness:
                     ClaimCandidate(
                         kind="FACT",
                         text="The company published an annual report in 2025.",
-                        evidence_ids=["evidence-source-0-block-0-0"],
+                        evidence_ids=["evidence-question-0-source-0-0"],
                         upstream_claim_ids=[],
                     ),
                     ClaimCandidate(
                         kind="FACT",
                         text="The company announced an unverified acquisition.",
-                        evidence_ids=["evidence-source-0-block-0-0"],
+                        evidence_ids=["evidence-question-0-source-0-0"],
                         upstream_claim_ids=[],
                     ),
                 ]

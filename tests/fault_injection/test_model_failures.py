@@ -41,6 +41,7 @@ async def pipeline(repository: SQLiteRepository, tmp_path: Path) -> ResearchPipe
             id="question-1", run_id="run-1", text="发布时间？", purpose="核验发布时间",
             preferred_source_types=["WEB"], completion_criteria="有一条已核验证据",
         ),
+        source_id="source-1",
     )
 
 
@@ -103,7 +104,7 @@ async def test_verification_timeout_becomes_failure_and_never_approves_fact(
             claims=[
                 ClaimCandidate(
                     kind="FACT", text="公司于2025年发布年度报告。",
-                    evidence_ids=["evidence-block-1-0"], upstream_claim_ids=[],
+                    evidence_ids=["evidence-question-1-source-1-0"], upstream_claim_ids=[],
                 )
             ]
         )
