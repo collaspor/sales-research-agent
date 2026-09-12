@@ -16,10 +16,14 @@ POC 已验证核心 Agent 链路、证据可信度门禁、网页/PDF 摄取、�
 | 来源网页可回查 | 通过 | HTML / Markdown 展示标题、URL 和来源等级 |
 | PDF 解析 | 通过 | MinerU API 已完成真实调用验证 |
 | 失败降级 | 通过 | 单来源失败不会阻断其他来源 |
-| 离线回归测试 | 通过 | `99 passed, 1 deselected` |
+| 离线回归测试 | 通过 | 2026-09-12：`112 passed, 1 deselected`，Ruff 与 Mypy 通过 |
 | 本地交互入口 | 通过 | `uv run sales-research web`，默认监听 `127.0.0.1:8765` |
 | 连续运行稳定性 | 通过 | 已完成 5 次真实运行，均无流程级崩溃，见重复运行记录 |
 | 售前人工审阅 | 通过 | 海尔和比亚迪批准 Fact 均已逐条核对 Evidence |
+| 并行实体隔离 | 通过 | Claim、Verification、Failure 和模型响应制品按问题与来源确定性隔离 |
+| 共享来源问题覆盖 | 通过 | 同一来源只摄取一次，并对全部关联研究问题分别执行可信管线 |
+| 运行遥测 | 离线通过 | 外部请求使用 started/finished 事件持久化；真实公网计数待下一次授权运行复核 |
+| 历史运行兼容 | 通过 | version 1 可 inspect 且不改写旧 Schema；新版明确拒绝 resume |
 
 ## MVP 完成定义
 
@@ -32,6 +36,16 @@ POC 已验证核心 Agent 链路、证据可信度门禁、网页/PDF 摄取、�
 5. 售前工程师可以仅通过客户背景和研究目标启动调研；CLI 与本地浏览器入口均可用；
 6. 报告中的缺口、失败和来源等级能支持人工复核；
 7. README、运行示例和验收记录与实际结果一致。
+
+## 2026-09-12 P0 正确性收口
+
+- 新运行使用 runtime version 2，运行元数据独立于 LangGraph checkpoint；
+- Evidence、Claim、Verification、Gap、Failure 和模型响应制品使用 Source—Question 作用域；
+- 同一来源关联多个研究问题时，正文只摄取一次，后续研究按关联问题分别执行；
+- Tavily、静态网页、MinerU 和 DeepSeek 的实际请求及重试写入两阶段审计事件；
+- `inspect` 保持原字段并增加版本、终态、耗时、调用次数及中断调用数；
+- CLI 测试不再读取项目本地 `.env`；
+- 本轮只完成离线回归，没有发起真实 Provider 调用。真实运行指标需要在用户授权后补充。
 
 ## 暂不纳入 MVP
 

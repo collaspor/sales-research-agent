@@ -12,6 +12,7 @@ from sales_research_agent.providers.base import (
     EvidenceExtraction,
     SupportVerification,
 )
+from sales_research_agent.providers.deepseek import ProviderSchemaError
 from sales_research_agent.runtime import ResearchPipeline
 from tests.fakes import FakeResearchModel
 
@@ -113,3 +114,57 @@ async def test_parallel_pipelines_keep_entities_and_artifacts_isolated(
     }
     assert any("question-0/source-0" in path for path in response_paths)
     assert any("question-1/source-1" in path for path in response_paths)
+
+
+@pytest.mark.asyncio
+async def test_parallel_pipeline_failures_keep_their_source_scope(
+    repository: SQLiteRepository, tmp_path: Path
+) -> None:
+    artifacts = ArtifactStore(tmp_path / "artifacts")
+    brief = Brief(
+        id="brief-1",
+        run_id="run-1",
+        customer_name="示例客户",
+        scenario="会前调研",
+        known_context="",
+        research_goal="核验公开事实",
+    )
+    for question_id, source_id in (
+        ("question-0", "source-0"),
+        ("question-1", "source-1"),
+    ):
+        block = DocumentBlock(
+            id=f"{source_id}-block-0",
+            run_id="run-1",
+            source_revision_id=f"revision-{source_id}",
+            ordinal=0,
+            text="正文",
+            clean_start=0,
+            clean_end=2,
+        )
+        await repository.upsert_document_block(block, f"run-1:block:{block.id}")
+        model = FakeResearchModel()
+        model.queue_evidence(ProviderSchemaError("invalid"))
+        model.queue_evidence(ProviderSchemaError("invalid"))
+        pipeline = ResearchPipeline(
+            repository=repository,
+            artifacts=artifacts,
+            model=model,
+            brief=brief,
+            question=ResearchQuestion(
+                id=question_id,
+                run_id="run-1",
+                text="研究问题",
+                purpose="核验",
+                preferred_source_types=["WEB"],
+                completion_criteria="有证据",
+            ),
+            source_id=source_id,
+        )
+        await pipeline.run(block_ids=[block.id])
+
+    failures = await repository.list_failures("run-1")
+    assert {failure.id for failure in failures} == {
+        "failure-question-0-source-0-extract_evidence-0",
+        "failure-question-1-source-1-extract_evidence-0",
+    }

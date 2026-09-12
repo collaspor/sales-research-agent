@@ -4,7 +4,9 @@
 
 当前处于 **本地 CLI MVP**：可恢复 Graph、证据门禁、网页/PDF 摄取、双格式报告和异常降级已通过离线与真实公网验证；海尔智家与比亚迪案例均已运行，多次运行稳定性和 Fact 人工审阅已记录。项目暂不定位为多人生产服务。详见 [MVP 验收清单](docs/mvp-acceptance-checklist.md)、[比亚迪真实运行审阅](docs/poc/2026-09-11-byd-live-run-review.md) 与 [重复运行稳定性记录](docs/poc/2026-09-11-repeated-run-stability.md)。
 
-该次真实案例使用 `uv run sales-research run --case evals/cases/haier_first_meeting.json --live` 执行；随后已通过 `uv lock --check`、`uv sync --locked`、`uv run pytest -m "not live" -q`（86 passed, 1 deselected）、`uv run ruff check .` 与 `uv run mypy src`。
+该次真实案例使用 `uv run sales-research run --case evals/cases/haier_first_meeting.json --live` 执行。2026-09-12 完成 P0 正确性收口后，本地离线验证结果为 `112 passed, 1 deselected`，并通过 `ruff check .` 与 `mypy src`；本轮没有重新发起真实公网运行。
+
+P0 收口补齐了并行研究实体与模型制品隔离、共享来源的多问题覆盖、可跨恢复审计的外部调用遥测，以及 CLI 测试与开发者 `.env` 的隔离。新运行使用 runtime version 2；历史 version 1 报告仍可查看和检查，但不允许由新版继续恢复。
 
 ## 当前范围
 
@@ -45,7 +47,7 @@
 uv run sales-research run --case evals/cases/haier_first_meeting.json --live
 ```
 
-运行完成后使用 `sales-research inspect --run-id <run_id>` 查看脱敏汇总，并按审阅模板逐条核对全部外部 Fact。密钥不得提交到版本库、运行制品、日志或审阅文档。
+运行完成后使用 `sales-research inspect --run-id <run_id>` 查看脱敏汇总。汇总包含运行版本、终态、耗时、搜索/网页/PDF/模型调用次数、来源结果和 Claim 数量；随后按审阅模板逐条核对全部外部 Fact。密钥不得提交到版本库、运行制品、日志或审阅文档。
 
 MVP 公开案例包括海尔智家和比亚迪：
 
