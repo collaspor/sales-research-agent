@@ -52,3 +52,8 @@ async def test_offline_poc_run_persists_auditable_approved_outputs(tmp_path: Pat
     assert stats is not None
     assert stats.sources_succeeded == 1
     assert stats.claims_approved == len(approved_ids)
+    metadata = await offline_run.repository.get_run_metadata(offline_run.run_id)
+    assert metadata is not None
+    assert metadata.runtime_version == 2
+    assert metadata.execution_status == "FINISHED"
+    assert metadata.report_outcome == "COMPLETED"

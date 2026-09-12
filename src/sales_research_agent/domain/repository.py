@@ -61,6 +61,9 @@ class DomainRepository(ABC):
     async def get_research_question(self, entity_id: str) -> ResearchQuestion | None: ...
 
     @abstractmethod
+    async def list_research_questions(self, run_id: str) -> list[ResearchQuestion]: ...
+
+    @abstractmethod
     async def upsert_source(self, entity: Source, operation_key: str) -> str: ...
 
     @abstractmethod

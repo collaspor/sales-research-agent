@@ -127,6 +127,9 @@ class SQLiteRepository(DomainRepository):
     async def get_research_question(self, entity_id: str) -> ResearchQuestion | None:
         return await self._get("research_questions", entity_id, ResearchQuestion)
 
+    async def list_research_questions(self, run_id: str) -> list[ResearchQuestion]:
+        return await self._list("research_questions", run_id, ResearchQuestion)
+
     async def upsert_source(self, entity: Source, operation_key: str) -> str:
         return await self._upsert("sources", entity, operation_key)
 

@@ -12,7 +12,13 @@ from uuid import uuid4
 import httpx
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from sales_research_agent.domain.models import Brief, DocumentBlock, Evidence, ResearchQuestion
+from sales_research_agent.domain.models import (
+    Brief,
+    DocumentBlock,
+    Evidence,
+    ResearchQuestion,
+    RunMetadata,
+)
 from sales_research_agent.infrastructure.artifacts import ArtifactStore
 from sales_research_agent.infrastructure.sqlite_repository import SQLiteRepository
 from sales_research_agent.ingestion.fetcher import FetchFailure, FetchResult
@@ -285,6 +291,17 @@ class PocHarness:
 
     async def initialize(self) -> None:
         await self.repository.initialize()
+        now = datetime.now(UTC)
+        await self.repository.save_run_metadata(
+            RunMetadata(
+                run_id=self.run_id,
+                runtime_version=2,
+                execution_status="RUNNING",
+                report_outcome=None,
+                started_at=now,
+                finished_at=None,
+            )
+        )
         await self.repository.upsert_brief(self.brief, f"{self.run_id}:brief:{self.brief.id}")
         self._saver = await self._saver_context.__aenter__()
         self.search.queue_results(

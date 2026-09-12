@@ -12,9 +12,13 @@ import typer
 from pydantic import ValidationError
 
 from sales_research_agent.config import Settings
-from sales_research_agent.domain.models import Brief
+from sales_research_agent.domain.models import Brief, RunMetadata
 from sales_research_agent.infrastructure.artifacts import ArtifactStore
 from sales_research_agent.infrastructure.sqlite_repository import SQLiteRepository
+from sales_research_agent.infrastructure.telemetry import (
+    AuditExternalCallRecorder,
+    summarize_external_calls,
+)
 from sales_research_agent.ingestion.fetcher import Fetcher
 from sales_research_agent.ingestion.url_policy import UrlPolicy
 from sales_research_agent.providers.deepseek import DeepSeekProvider
@@ -23,6 +27,7 @@ from sales_research_agent.providers.tavily import TavilySearchProvider
 from sales_research_agent.sources.authority import SourceAuthorityPolicy
 
 app = typer.Typer(help="Evidence-driven public web research POC.", no_args_is_help=True)
+CURRENT_RUNTIME_VERSION = 2
 
 
 @app.command()
@@ -104,6 +109,17 @@ async def _start_live_run(settings: Settings, payload: dict[str, str], run_id: s
     directory.mkdir(parents=True, exist_ok=False)
     repository = SQLiteRepository(directory / "domain.sqlite3")
     await repository.initialize()
+    started_at = datetime.now(UTC)
+    await repository.save_run_metadata(
+        RunMetadata(
+            run_id=run_id,
+            runtime_version=CURRENT_RUNTIME_VERSION,
+            execution_status="RUNNING",
+            report_outcome=None,
+            started_at=started_at,
+            finished_at=None,
+        )
+    )
     brief = Brief(id=f"brief-{run_id}", run_id=run_id, **payload)
     await repository.upsert_brief(brief, f"{run_id}:brief:{brief.id}")
     await _invoke_graph(settings, directory, repository, run_id, resume=False)
@@ -115,6 +131,12 @@ async def _resume_live_run(settings: Settings, run_id: str) -> None:
         raise typer.BadParameter("run was not found")
     repository = SQLiteRepository(directory / "domain.sqlite3")
     await repository.initialize()
+    metadata = await repository.get_run_metadata(run_id)
+    version = metadata.runtime_version if metadata is not None else 1
+    if version != CURRENT_RUNTIME_VERSION:
+        raise typer.BadParameter(
+            f"run runtime version {version} cannot be resumed by version {CURRENT_RUNTIME_VERSION}"
+        )
     await _invoke_graph(settings, directory, repository, run_id, resume=True)
 
 
@@ -128,13 +150,15 @@ async def _invoke_graph(
     from sales_research_agent.graph.builder import Services, build_poc_graph
 
     artifacts = ArtifactStore(directory / "artifacts")
-    search = TavilySearchProvider(settings.tavily_api_key or "")
+    recorder = AuditExternalCallRecorder(repository, run_id)
+    search = TavilySearchProvider(settings.tavily_api_key or "", recorder=recorder)
     pdf_parser = (
         MinerUPdfParser(
             settings.mineru_api_key or "",
             base_url=settings.mineru_base_url,
             poll_interval=settings.mineru_poll_seconds,
             poll_timeout=settings.mineru_timeout_seconds,
+            recorder=recorder,
         )
         if settings.mineru_api_key
         else None
@@ -145,8 +169,9 @@ async def _invoke_graph(
             graph = build_poc_graph(
                 Services(
                     repository=repository, artifacts=artifacts, search=search,
-                    model=DeepSeekProvider(settings=settings),
-                    fetcher=Fetcher(client, UrlPolicy()), clock=lambda: datetime.now(UTC),
+                    model=DeepSeekProvider(settings=settings, recorder=recorder),
+                    fetcher=Fetcher(client, UrlPolicy(), recorder=recorder),
+                    clock=lambda: datetime.now(UTC),
                     max_sources=settings.max_sources, max_questions=settings.max_questions,
                     pdf_parser=pdf_parser,
                     source_policy=SourceAuthorityPolicy(
@@ -183,13 +208,59 @@ async def _inspect_run(directory: Path, run_id: str) -> dict[str, object]:
     sources = await repository.list_sources(run_id)
     claims = await repository.list_claims(run_id)
     failures = await repository.list_failures(run_id)
+    questions = await repository.list_research_questions(run_id)
     versions = await repository.list_report_versions(run_id)
+    metadata = await repository.get_run_metadata(run_id)
+    stats = await repository.get_stats(run_id)
+    events = await repository.list_audit_events(run_id)
+    calls = summarize_external_calls(events)
     active = next((item for item in reversed(versions) if item.is_active), None)
+    runtime_version = metadata.runtime_version if metadata is not None else 1
+    now = datetime.now(UTC)
+    started_at = metadata.started_at if metadata is not None else (
+        stats.started_at if stats is not None else None
+    )
+    finished_at = metadata.finished_at if metadata is not None else (
+        stats.finished_at if stats is not None else None
+    )
+    duration_seconds = (
+        max(0.0, ((finished_at or now) - started_at).total_seconds())
+        if started_at is not None
+        else None
+    )
+    has_call_events = any(event.get("event_type") == "CALL_STARTED" for event in events)
     return {
         "run_id": run_id,
+        "runtime_version": runtime_version,
+        "execution_status": metadata.execution_status if metadata is not None else (
+            "FINISHED" if active is not None else "RUNNING"
+        ),
+        "report_outcome": metadata.report_outcome if metadata is not None else None,
+        "started_at": started_at.isoformat() if started_at is not None else None,
+        "finished_at": finished_at.isoformat() if finished_at is not None else None,
+        "duration_seconds": duration_seconds,
+        "questions": len(questions),
         "sources": len(sources),
+        "sources_succeeded": stats.sources_succeeded if stats is not None else 0,
+        "sources_failed": stats.sources_failed if stats is not None else len(failures),
+        "official_sources_succeeded": (
+            stats.official_sources_succeeded if stats is not None else 0
+        ),
         "failures": len(failures),
         "claims_approved": sum(item.status == "APPROVED" for item in claims),
         "claims_rejected": sum(item.status == "REJECTED" for item in claims),
+        "search_calls": calls.search_calls if has_call_events else (
+            stats.search_calls if stats is not None else 0
+        ),
+        "http_calls": calls.http_calls if has_call_events else (
+            stats.http_calls if stats is not None else 0
+        ),
+        "pdf_calls": calls.pdf_calls if has_call_events else (
+            stats.pdf_calls if stats is not None else 0
+        ),
+        "model_calls": calls.model_calls if has_call_events else (
+            stats.model_calls if stats is not None else 0
+        ),
+        "interrupted_calls": calls.interrupted_calls,
         "report_path": "reports/report.md" if active is not None else None,
     }

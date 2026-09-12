@@ -3,7 +3,15 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from sales_research_agent.domain.models import DocumentBlock, ResearchQuestion, Source
+from sales_research_agent.domain.models import (
+    Claim,
+    DocumentBlock,
+    ReportOutcome,
+    ResearchQuestion,
+    RunMetadata,
+    Source,
+)
+from sales_research_agent.infrastructure.telemetry import summarize_external_calls
 from sales_research_agent.ingestion.extractor import HtmlExtractor
 from sales_research_agent.ingestion.ingestor import HtmlIngestor
 from sales_research_agent.ingestion.pdf_ingestor import PdfIngestor
@@ -146,14 +154,27 @@ def make_nodes(services: Any) -> dict[str, Any]:
         failures = await services.repository.list_failures(state["run_id"])
         claims = await services.repository.list_claims(state["run_id"])
         now = services.clock()
+        approved_claims = [
+            claim for claim in claims if claim.kind == "FACT" and claim.status == "APPROVED"
+        ]
+        report_outcome = _determine_report_outcome(
+            state["research_question_ids"],
+            approved_claims,
+            failures,
+            state["failed_source_ids"],
+        )
+        calls = summarize_external_calls(
+            await services.repository.list_audit_events(state["run_id"])
+        )
         await services.repository.save_stats(
             services.run_stats_type(
                 run_id=state["run_id"],
                 started_at=datetime.fromisoformat(state["started_at"]),
                 finished_at=now.astimezone(UTC),
-                search_calls=_service_call_count(services.search),
-                http_calls=_service_call_count(services.fetcher),
-                model_calls=_model_call_count(services.model),
+                search_calls=calls.search_calls,
+                http_calls=calls.http_calls,
+                pdf_calls=calls.pdf_calls,
+                model_calls=calls.model_calls,
                 sources_succeeded=len(state["successful_source_ids"]),
                 sources_failed=len(state["failed_source_ids"]),
                 claims_approved=len([claim for claim in claims if claim.status == "APPROVED"]),
@@ -162,10 +183,26 @@ def make_nodes(services: Any) -> dict[str, Any]:
                 secondary_sources_succeeded=sum(1 for item in await services.repository.list_sources(state["run_id"]) if item.authority == "TRUSTED_SECONDARY" and item.id in state["successful_source_ids"]),
             )
         )
+        metadata = await services.repository.get_run_metadata(state["run_id"])
+        started_at = (
+            metadata.started_at
+            if metadata is not None
+            else datetime.fromisoformat(state["started_at"])
+        )
+        await services.repository.save_run_metadata(
+            RunMetadata(
+                run_id=state["run_id"],
+                runtime_version=2,
+                execution_status="FINISHED",
+                report_outcome=report_outcome,
+                started_at=started_at,
+                finished_at=now.astimezone(UTC),
+            )
+        )
         return {
             "report_version_id": version.id,
             "execution_status": "FINISHED",
-            "report_outcome": "PARTIAL" if failures or state["failed_source_ids"] else "COMPLETE",
+            "report_outcome": report_outcome,
         }
 
     return {"plan_research": plan_research, "discover_sources": discover_sources,
@@ -239,3 +276,22 @@ def _service_call_count(service: Any) -> int:
     if isinstance(call_count, int):
         return call_count
     return len(getattr(service, "calls", []))
+
+
+def _determine_report_outcome(
+    question_ids: list[str],
+    approved_claims: list[Claim],
+    failures: list[object],
+    failed_source_ids: list[str],
+) -> ReportOutcome:
+    """用可确定的事实覆盖与失败状态生成报告终态。"""
+    if not approved_claims:
+        return "FAILED"
+    covered_questions = {
+        question_id
+        for question_id in question_ids
+        if any(claim.id.startswith(f"claim-{question_id}-") for claim in approved_claims)
+    }
+    if failures or failed_source_ids or len(covered_questions) != len(question_ids):
+        return "PARTIAL"
+    return "COMPLETED"
