@@ -44,39 +44,38 @@ def test_markdown_discloses_unclassified_authority_and_clickable_source(
 
     assert "来源等级未确认" in markdown
     assert "[示例来源](https://example.com/report)" in markdown
-    assert "[来源等级未确认]" in markdown
+    assert "LU · Date Unknown · Low Confidence" in markdown
 
 
-def test_report_v2_markdown_has_reviewable_core_sections(report_model: ReportModel) -> None:
+def test_markdown_is_a_presales_intelligence_brief_with_auditable_appendices(
+    report_model: ReportModel,
+) -> None:
     markdown = compile_markdown(report_model)
 
     for heading in (
-        "## 0. 报告说明",
-        "## 1. Executive Summary",
-        "## 2. 面向售前的事实摘要",
-        "## 3. 信息缺口与待确认事项",
-        "## 4. 证据索引",
-        "## 5. 来源清单",
-        "## 6. 失败来源",
-        "## 7. 研究覆盖情况",
-        "## 8. 本次运行统计",
-        "## Appendix：可信度说明",
+        "## 1. Executive Brief",
+        "## 2. 面客前关键事实",
+        "## 3. 售前机会假设",
+        "## 4. 首次交流建议问题",
+        "## 5. 当前判断边界与信息缺口",
+        "## Appendix A — Evidence Index",
+        "## Appendix B — Sources Used",
+        "## Appendix C — Research Quality",
     ):
         assert heading in markdown
     assert "https://example.com/report" in markdown
 
 
-def test_report_v2_html_has_reviewable_core_sections(report_model: ReportModel) -> None:
+def test_html_has_the_same_intelligence_brief_structure(report_model: ReportModel) -> None:
     html = compile_html(report_model)
 
     for heading in (
-        "报告说明",
-        "Executive Summary",
-        "面向售前的事实摘要",
-        "信息缺口与待确认事项",
-        "证据索引",
-        "来源清单",
-        "研究覆盖情况",
+        "Executive Brief",
+        "面客前关键事实",
+        "售前机会假设",
+        "首次交流建议问题",
+        "Evidence Index",
+        "Sources Used",
     ):
         assert heading in html
     assert 'href="https://example.com/report"' in html

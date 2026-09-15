@@ -12,6 +12,7 @@ from sales_research_agent.domain.models import (
     ResearchQuestion,
     UppercaseValue,
 )
+from sales_research_agent.reporting.models import ReportComposition
 
 
 class ProviderModel(BaseModel):
@@ -89,6 +90,15 @@ class ProviderCallStats(ProviderModel):
     failed_calls: int = 0
 
 
+class ReportCompositionInput(ProviderModel):
+    """报告编排器的受限输入，不包含网页正文或未审批实体。"""
+
+    run_id: str
+    brief: dict[str, str]
+    facts: list[dict[str, object]]
+    gaps: list[dict[str, str]]
+
+
 class SearchProvider(ABC):
     """公开搜索的异步端口。"""
 
@@ -148,3 +158,7 @@ class ResearchModel(ABC):
         self, claim: ClaimCandidate, evidence: list[Evidence]
     ) -> SupportVerification:
         """独立判断证据是否支持一条 Claim。"""
+
+    @abstractmethod
+    async def compose_report(self, report_input: ReportCompositionInput) -> ReportComposition:
+        """仅组织已审批报告视图，不能创建外部事实或来源。"""

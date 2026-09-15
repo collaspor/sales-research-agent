@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from sales_research_agent.domain.models import Brief, DocumentBlock, Evidence, ResearchQuestion
+from sales_research_agent.providers.base import ReportCompositionInput
 from sales_research_agent.providers.deepseek import DeepSeekProvider
 from tests.fakes import MemoryExternalCallRecorder, SequenceChatModel
 
@@ -161,3 +162,25 @@ async def test_deepseek_exposes_structured_minimal_contracts_for_research_steps(
     assert claims.claims[0].evidence_ids == ["evidence-1"]
     assert verification.decision == "SUPPORTED"
     assert provider.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_deepseek_composes_report_from_constrained_view() -> None:
+    client = SequenceChatModel(
+        ['{"executive_judgment":{"text":"公开信息形成初步背景。","claim_ids":["claim-1"]},"key_findings":[],"opportunity_hypotheses":[],"discovery_questions":[],"readable_gaps":[]}']
+    )
+    recorder = MemoryExternalCallRecorder()
+    provider = DeepSeekProvider(client=client, recorder=recorder)
+
+    result = await provider.compose_report(
+        ReportCompositionInput(
+            run_id="run-1",
+            brief={"customer_name": "示例客户"},
+            facts=[{"claim_id": "claim-1", "text": "已核验事实"}],
+            gaps=[],
+        )
+    )
+
+    assert result.executive_judgment.claim_ids == ("claim-1",)
+    assert recorder.events[0]["operation"] == "compose_report"
+    assert "raw page" in str(client.calls[0]["input"]).lower()

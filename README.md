@@ -2,7 +2,7 @@
 
 面向售前工程师的证据驱动型公网调研 Agent。项目以可信度为硬门槛、效率为第二目标，通过 LangGraph 编排调研计划、信息采集、证据抽取、事实核验和报告生成，使报告中的外部事实可以追溯到原始来源。
 
-当前处于 **本地 CLI MVP**：可恢复 Graph、证据门禁、网页/PDF 摄取、双格式报告和异常降级已通过离线与真实公网验证；海尔智家与比亚迪案例均已运行，多次运行稳定性和 Fact 人工审阅已记录。项目暂不定位为多人生产服务。详见 [MVP 验收清单](docs/mvp-acceptance-checklist.md)、[比亚迪真实运行审阅](docs/poc/2026-09-11-byd-live-run-review.md) 与 [重复运行稳定性记录](docs/poc/2026-09-11-repeated-run-stability.md)。
+当前处于 **本地 CLI MVP**：可恢复 Graph、证据门禁、网页/PDF 摄取、异常降级和双格式 Intelligence Brief 已通过离线验证；报告正文面向售前会前阅读，来源、原文证据和研究质量进入可追溯附录。海尔智家与比亚迪案例均已运行，多次运行稳定性和 Fact 人工审阅已记录。项目暂不定位为多人生产服务。详见 [MVP 验收清单](docs/mvp-acceptance-checklist.md)、[报告输出契约](docs/intelligence-brief-report-contract.md)、[比亚迪真实运行审阅](docs/poc/2026-09-11-byd-live-run-review.md) 与 [重复运行稳定性记录](docs/poc/2026-09-11-repeated-run-stability.md)。
 
 真实案例使用 `uv run sales-research run --case <case.json> --live` 执行。2026-09-12 完成 P0 正确性收口及评审修复后，本地离线验证结果为 `120 passed, 1 deselected`，并通过 `ruff check .` 与 `mypy src`。随后经授权执行比亚迪真实公网验收：持久化遥测与实体隔离通过，但发现一个 GBK 页面产生 8 条乱码 Evidence，因此本次报告终态为 `PARTIAL`，不能视为内容质量完全通过。
 

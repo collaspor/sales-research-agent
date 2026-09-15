@@ -29,12 +29,14 @@ from sales_research_agent.providers.base import (
     EvidenceCandidate,
     EvidenceExtraction,
     PlannedQuestion,
+    ReportCompositionInput,
     ResearchModel,
     ResearchPlan,
     SearchProvider,
     SearchResult,
     SupportVerification,
 )
+from sales_research_agent.reporting.models import ReportComposition
 
 QueueValue = TypeVar("QueueValue")
 
@@ -161,10 +163,12 @@ class FakeResearchModel(ResearchModel):
         self.evidence_responses: deque[EvidenceExtraction | Exception] = deque()
         self.claim_responses: deque[ClaimSynthesis | Exception] = deque()
         self.verification_responses: deque[SupportVerification | Exception] = deque()
+        self.composition_responses: deque[ReportComposition | Exception] = deque()
         self.plan_calls: list[Brief] = []
         self.evidence_calls: list[tuple[ResearchQuestion, list[DocumentBlock]]] = []
         self.claim_calls: list[tuple[Brief, list[Evidence]]] = []
         self.verification_calls: list[tuple[ClaimCandidate, list[Evidence]]] = []
+        self.composition_calls: list[ReportCompositionInput] = []
 
     def queue_plan(self, response: ResearchPlan) -> None:
         self.plan_responses.append(response)
@@ -177,6 +181,9 @@ class FakeResearchModel(ResearchModel):
 
     def queue_verification(self, response: SupportVerification | Exception) -> None:
         self.verification_responses.append(response)
+
+    def queue_composition(self, response: ReportComposition | Exception) -> None:
+        self.composition_responses.append(response)
 
     def queue_claim(self, response: ClaimSynthesis | Exception) -> None:
         """兼容单数命名，便于管线测试表达单次综合。"""
@@ -201,6 +208,12 @@ class FakeResearchModel(ResearchModel):
     ) -> SupportVerification:
         self.verification_calls.append((claim, evidence))
         return self._pop_or_raise(self.verification_responses, "verify_support")
+
+    async def compose_report(self, report_input: ReportCompositionInput) -> ReportComposition:
+        self.composition_calls.append(report_input)
+        if not self.composition_responses:
+            raise RuntimeError("FakeResearchModel compose_report response is not configured")
+        return self._pop_or_raise(self.composition_responses, "compose_report")
 
     @staticmethod
     def _pop(queue: deque[QueueValue], operation: str) -> QueueValue:

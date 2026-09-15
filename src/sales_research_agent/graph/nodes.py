@@ -16,8 +16,14 @@ from sales_research_agent.infrastructure.telemetry import summarize_external_cal
 from sales_research_agent.ingestion.extractor import HtmlExtractor
 from sales_research_agent.ingestion.ingestor import HtmlIngestor
 from sales_research_agent.ingestion.pdf_ingestor import PdfIngestor
+from sales_research_agent.providers.base import ReportCompositionInput
 from sales_research_agent.reporting.compiler import publish_report
+from sales_research_agent.reporting.composer import (
+    fallback_composition,
+    validate_composition,
+)
 from sales_research_agent.reporting.models import (
+    BriefHeader,
     ReportEvidence,
     ReportFact,
     ReportFailure,
@@ -156,6 +162,35 @@ def make_nodes(services: Any) -> dict[str, Any]:
 
     async def publish(state: dict[str, Any]) -> dict[str, object]:
         report = await _build_report(services, state)
+        try:
+            composition = await services.model.compose_report(
+                ReportCompositionInput(
+                    run_id=state["run_id"],
+                    brief={
+                        "customer_name": report.brief.customer_name if report.brief else "",
+                        "scenario": report.brief.scenario if report.brief else "",
+                        "research_goal": report.brief.research_goal if report.brief else "",
+                    },
+                    facts=[
+                        {
+                            "claim_id": fact.claim_id,
+                            "text": fact.text,
+                            "evidence_ids": list(fact.evidence_ids),
+                            "source_ids": list(fact.source_ids),
+                        }
+                        for fact in report.facts
+                    ],
+                    gaps=[{"code": gap.code, "description": gap.description} for gap in report.gaps],
+                )
+            )
+            report = report.model_copy(
+                update={"composition": validate_composition(report, composition), "composition_mode": "MODEL"}
+            )
+        except Exception:  # noqa: BLE001 - 外部模型任意失败都必须降级，不能中断可信报告发布。
+            # 报告编排不可阻断既有证据链，回退结果仍只引用已批准实体。
+            report = report.model_copy(
+                update={"composition": fallback_composition(report), "composition_mode": "FALLBACK"}
+            )
         version = await publish_report(services.artifacts, services.repository, state["run_id"], report)
         failures = await services.repository.list_failures(state["run_id"])
         claims = await services.repository.list_claims(state["run_id"])
@@ -222,6 +257,10 @@ def make_nodes(services: Any) -> dict[str, Any]:
 async def _build_report(services: Any, state: dict[str, Any]) -> ReportModel:
     """仅从已持久化且批准的实体构建报告，避免分支时序影响内容。"""
     run_id = state["run_id"]
+    briefs = await services.repository.list_briefs(run_id)
+    if len(briefs) != 1:
+        raise ValueError("persisted Graph inputs are incomplete")
+    brief = briefs[0]
     sources = await services.repository.list_sources(run_id)
     revisions = {item.id: item for item in await services.repository.list_source_revisions(run_id)}
     blocks = {item.id: item for item in await services.repository.list_document_blocks(run_id)}
@@ -263,6 +302,12 @@ async def _build_report(services: Any, state: dict[str, Any]) -> ReportModel:
             official_sources_succeeded=sum(1 for item in sources if item.authority == "OFFICIAL_PRIMARY" and item.id in state["successful_source_ids"]),
             secondary_sources_succeeded=sum(1 for item in sources if item.authority == "TRUSTED_SECONDARY" and item.id in state["successful_source_ids"]),
             official_coverage=any(item.authority == "OFFICIAL_PRIMARY" and item.id in state["successful_source_ids"] for item in sources),
+        ),
+        brief=BriefHeader(
+            customer_name=brief.customer_name,
+            scenario=brief.scenario,
+            research_goal=brief.research_goal,
+            known_context=brief.known_context,
         ),
     )
 

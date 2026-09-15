@@ -16,11 +16,13 @@ from sales_research_agent.providers.base import (
     ClaimSynthesis,
     EvidenceExtraction,
     ProviderCallStats,
+    ReportCompositionInput,
     ResearchModel,
     ResearchPlan,
     SupportVerification,
 )
 from sales_research_agent.providers.tavily import ProviderConfigurationError, ProviderPermanentError
+from sales_research_agent.reporting.models import ReportComposition
 
 ModelOutput = TypeVar("ModelOutput", bound=BaseModel)
 
@@ -104,6 +106,15 @@ class DeepSeekProvider(ResearchModel):
             "verify_support", payload, SupportVerification, related_entity_id
         )
 
+    async def compose_report(self, report_input: ReportCompositionInput) -> ReportComposition:
+        """只用冻结的报告视图生成售前阅读顺序与措辞。"""
+        return await self._request_structured(
+            "compose_report",
+            report_input.model_dump(mode="json"),
+            ReportComposition,
+            report_input.run_id,
+        )
+
     async def _request_structured(
         self,
         operation: str,
@@ -157,7 +168,13 @@ class DeepSeekProvider(ResearchModel):
     def _system_message(operation: str, output_type: type[BaseModel]) -> str:
         schema = output_type.model_json_schema()
         example = output_type.model_construct().model_dump(mode="json")
-        return (
+        instruction = (
             "Return only a JSON object that matches the required schema. "
             f"Operation: {operation}. Schema: {schema}. Example shape: {example}."
         )
+        if operation == "compose_report":
+            instruction += (
+                " Use only supplied claim_ids and gap_codes. Do not create facts, sources, "
+                "evidence, customer requirements, or content from raw pages."
+            )
+        return instruction

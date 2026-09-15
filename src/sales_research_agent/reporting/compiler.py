@@ -11,51 +11,62 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sales_research_agent.domain.models import ReportVersion
 from sales_research_agent.domain.repository import DomainRepository
 from sales_research_agent.infrastructure.artifacts import ArtifactStore
+from sales_research_agent.reporting.composer import fallback_composition
 from sales_research_agent.reporting.models import (
+    ReportComposition,
+    ReportEvidence,
     ReportFact,
     ReportInference,
     ReportModel,
     ReportQuestion,
+    ReportSource,
 )
-from sales_research_agent.reporting.trust import attributed_fact, eligible_for_summary
+from sales_research_agent.reporting.trust import build_fact_trust
 
 
 def compile_markdown(report: ReportModel) -> str:
-    """按稳定 ID 顺序编译 Markdown，保留审计所需的 data 属性。"""
-    source_by_id = {item.source_id: item for item in report.sources}
-    lines = ["# 售前会前公网调研报告", "", "## 0. 报告说明", "", _text(report.declaration), ""]
-    lines.extend(["### 来源等级", "", "| 标记 | 含义 |", "|---|---|", "| `L1` | 官方 / 一手来源 |", "| `L2` | 二手来源，待官方验证 |", "| `LU` | 来源等级尚未确认，需要人工判断 |", "", "来源等级是系统提示，不代表内容本身一定真实。关键事实应打开原始网页进行最终确认。", ""])
-    lines.extend(["## 1. Executive Summary", "", "### 1.1 当前调研摘要", "", _text(report.summary), ""])
-    lines.extend(["### 1.2 面客前最值得关注的事实", ""])
-    _append_fact_cards(lines, tuple(f for f in report.facts if eligible_for_summary(f, report)))
-    lines.extend(["### 1.3 当前最重要的信息缺口", ""])
-    _append_plain_section(lines, "", ((item.code, item.description) for item in report.gaps), heading=False)
-
-    lines.extend(["## 2. 面向售前的事实摘要", "", "### 2.1 业务与技术公开事实", ""])
-    _append_fact_section(lines, "", tuple(attributed_fact(f, report) for f in report.facts), heading=False)
-    if not report.facts:
-        lines.append("未获得可靠公开信息。\n")
-    lines.extend(["## 3. 信息缺口与待确认事项", ""])
-    _append_plain_section(lines, "", ((item.code, item.description) for item in report.gaps), heading=False)
-    if not report.gaps:
-        lines.append("本次未记录结构化信息缺口。\n")
-    _append_question_section(lines, report.questions)
-    lines.extend(["## 4. 证据索引", ""])
-    for index, evidence in enumerate(sorted(report.evidence_index, key=lambda item: item.evidence_id), start=1):
-        source = source_by_id.get(evidence.source_id)
-        lines.extend([f"### E{index:03d} {{#{evidence.evidence_id}}}", "", f"**Claim/Evidence ID：** {_evidence_marker(evidence.evidence_id)} `{_attribute(evidence.evidence_id)}`", "", "**原文：**", "", f"> {_text(evidence.quote)}", ""])
-        if source is not None:
-            lines.extend([f"**来源标题：** {_text(source.title)}  ", f"**来源 URL：** {_url(source.url)}  ", f"**来源等级：** `{_authority_code(source.authority)}` {_authority_label(source.authority)}", ""])
-    lines.extend(["## 5. 来源清单", "", "| Source ID | 来源 | 来源等级 |", "|---|---|---|"])
-    for source in sorted(report.sources, key=lambda item: item.source_id):
-        lines.append(f"| `{_attribute(source.source_id)}` | [{_text(source.title)}]({_url(source.url)}) | `{_authority_code(source.authority)}` {_authority_label(source.authority)} |")
-    lines.extend(["", "## 6. 失败来源", ""])
-    _append_plain_section(lines, "", ((item.code, item.message) for item in report.failures), heading=False)
-    if not report.failures:
-        lines.append("本次没有记录失败来源。\n")
-    lines.extend(["## 7. 研究覆盖情况", "", f"- 已覆盖：{len(report.facts)} 条有证据事实、{len(report.evidence_index)} 条证据、{len(report.sources)} 个来源", "- 部分覆盖：来源等级与官方属性仍需人工复核", "- 未获得可靠公开信息：未在当前 ReportModel 中提供的企业字段和场景模块", ""])
-    lines.extend(["## 8. 本次运行统计", "", "| 指标 | 数值 |", "|---|---:|", f"| 成功来源 | {report.stats.sources_succeeded} |", f"| 失败来源 | {report.stats.sources_failed} |", f"| Evidence | {len(report.evidence_index)} |", f"| Verified Claims | {report.stats.claims_approved} |", f"| 官方来源覆盖 | {'是' if report.stats.official_coverage else '未确认'} |", ""])
-    lines.extend(["## Appendix：可信度说明", "", "1. 外部事实必须绑定可定位 Evidence。", "2. 无 Evidence 的内容不能作为确定事实进入报告。", "3. Fact、分析和信息缺口分开呈现。", "4. 系统不根据域名自动认定官方网站。", "5. 访问失败、解析失败和验证失败均显式记录。", ""])
+    """输出先供售前阅读、后供审计追溯的 Markdown 报告。"""
+    context = _report_context(report)
+    composition = context.composition
+    facts = context.facts
+    lines = ["# 售前会前 Intelligence Brief", "", "## 1. Executive Brief", ""]
+    if report.brief:
+        lines.extend([f"**客户：** {_text(report.brief.customer_name)}  ", f"**调研目标：** {_text(report.brief.research_goal)}", ""])
+    lines.extend(["### 一句话判断", "", _text(composition.executive_judgment.text), "", "### 会前关键发现", ""])
+    for finding in composition.key_findings:
+        lines.extend([f"#### {_text(finding.title)}", "", f"{_claim_marker(finding.claim_ids[0]) if finding.claim_ids else ''}{_text(finding.text)}", "", f"**售前意义：** {_text(finding.presales_significance)}", ""])
+        _append_trust(lines, finding.claim_ids, facts, report.sources)
+    lines.extend(["## 2. 面客前关键事实", ""])
+    for fact in facts.values():
+        trust = build_fact_trust(fact, report.sources)
+        lines.extend([f"- {_claim_marker(fact.claim_id)} {_text(fact.text)}  ", f"  - `{trust.label}`；证据：{', '.join(_evidence_marker(item) for item in fact.evidence_ids)}", ""])
+    lines.extend(["## 3. 售前机会假设", "", "以下均为机会假设，不代表客户已提出需求。", "", "| 公开信号 | 可能关联能力 | 会前待确认 |", "|---|---|---|"])
+    for hypothesis in composition.opportunity_hypotheses:
+        marker = _claim_marker(hypothesis.claim_ids[0]) if hypothesis.claim_ids else ""
+        lines.append(f"| {marker}{_text(hypothesis.public_signal)} | {_text(hypothesis.related_capability)} | {_text(hypothesis.validation_needed)} |")
+    lines.extend(["", "## 4. 首次交流建议问题", ""])
+    for question in composition.discovery_questions:
+        lines.extend([f"- **{_text(question.category)}：** {_text(question.question)}  ", f"  - 为什么问：{_text(question.rationale)}", ""])
+    lines.extend(["## 5. 当前判断边界与信息缺口", "", "### 已确认公开事实", ""])
+    for fact in facts.values():
+        lines.append(f"- {_claim_marker(fact.claim_id)} {_text(fact.text)}")
+    lines.extend(["", "### 合理假设，但不可作为事实", ""])
+    for hypothesis in composition.opportunity_hypotheses:
+        lines.append(f"- {_text(hypothesis.text)}")
+    lines.extend(["", "### 尚未确认 / 建议交流验证", ""])
+    for gap in composition.readable_gaps:
+        lines.extend([f"- **{_text(gap.title)}：** {_text(gap.description)}", f"  - 风险提示：{_text(gap.risk_note)}", f"  - 建议询问：{_text(gap.suggested_question)}", ""])
+    lines.extend(["## Appendix A — Evidence Index", "", "注：来源陈述，待人工核实；历史信息不代表当前事实。", ""])
+    for index, evidence in enumerate(context.evidence, start=1):
+        source = context.sources.get(evidence.source_id)
+        lines.extend([f"### E{index:03d}", "", f"{_evidence_marker(evidence.evidence_id)} **原文：**", "", f"> {_text(evidence.quote)}", ""])
+        if source:
+            lines.extend([f"**来源：** [{_text(source.title)}]({_url(source.url)})  ", f"**来源等级：** `{_authority_code(source.authority)}` {_authority_label(source.authority)}", ""])
+    lines.extend(["## Appendix B — Sources Used", "", "| 来源 | 网页 | 等级 | 日期 |", "|---|---|---|---|"])
+    for source in context.sources.values():
+        published = source.published_on.isoformat() if source.published_on else "日期未识别"
+        lines.append(f"| {_text(source.title)} | [{_url(source.url)}]({_url(source.url)}) | `{_authority_code(source.authority)}` | {published} |")
+    lines.extend(["", "## Appendix C — Research Quality", "", f"- 成功来源：{report.stats.sources_succeeded}；失败来源：{report.stats.sources_failed}；已批准事实：{report.stats.claims_approved}。", f"- 编排模式：{_text(report.composition_mode)}。内部失败与缺口记录保留在审计库，不作为正文面客信息。", "", "### 可信度说明", "", "- 所有正文事实均绑定已审批 Evidence；机会假设不等同客户需求。", "- L1/L2/LU 仅说明来源类型；请在重要客户交流前打开原始网页复核。", ""])
     return "\n".join(lines)
 
 
@@ -63,17 +74,58 @@ def compile_html(report: ReportModel) -> str:
     """按稳定 ID 顺序渲染 HTML，模板自动转义全部不可信文本。"""
     template = _template_environment().get_template("report.html.j2")
     return template.render(
-        report=report,
-        summary_facts=sorted((f for f in report.facts if eligible_for_summary(f, report)), key=lambda item: item.claim_id),
-        facts=sorted((attributed_fact(f, report) for f in report.facts), key=lambda item: item.claim_id),
-        recent_changes=sorted(report.recent_changes, key=lambda item: item.claim_id),
-        inferences=sorted(report.inferences, key=lambda item: item.claim_id),
-        questions=sorted(report.questions, key=lambda item: item.claim_id),
-        gaps=sorted(report.gaps, key=lambda item: (item.code, item.description)),
-        failures=sorted(report.failures, key=lambda item: (item.code, item.message)),
-        sources=sorted(report.sources, key=lambda item: item.source_id),
-        evidence_index=sorted(report.evidence_index, key=lambda item: item.evidence_id),
+        report=report, **_report_context(report), trust=build_fact_trust,
     )
+
+
+def _report_context(report: ReportModel) -> "ReportContext":
+    """筛出仅支撑正文结论的来源和证据，避免无关搜索结果进入报告。"""
+    composition = report.composition or fallback_composition(report)
+    referenced_claims = set(composition.executive_judgment.claim_ids)
+    for group in (composition.key_findings, composition.opportunity_hypotheses):
+        referenced_claims.update(claim_id for item in group for claim_id in item.claim_ids)
+    facts = {item.claim_id: item for item in report.facts if item.claim_id in referenced_claims}
+    if not facts:
+        facts = {item.claim_id: item for item in report.facts}
+    source_ids = {source_id for fact in facts.values() for source_id in fact.source_ids}
+    sources = {source.source_id: source for source in report.sources if source.source_id in source_ids}
+    evidence_ids = {evidence_id for fact in facts.values() for evidence_id in fact.evidence_ids}
+    evidence = tuple(item for item in report.evidence_index if item.evidence_id in evidence_ids and item.source_id in sources)
+    return ReportContext(composition=composition, facts=facts, sources=sources, evidence=evidence)
+
+
+def _append_trust(
+    lines: list[str], claim_ids: tuple[str, ...], facts: dict[str, ReportFact], sources: tuple[ReportSource, ...]
+) -> None:
+    for claim_id in claim_ids:
+        fact = facts.get(claim_id)
+        if fact:
+            lines.append(f"**可信标签：** `{build_fact_trust(fact, sources).label}`")
+    if claim_ids:
+        lines.append("")
+
+
+class ReportContext(dict[str, object]):
+    """模板和 Markdown 共享的已过滤报告视图。"""
+
+    composition: ReportComposition
+    facts: dict[str, ReportFact]
+    sources: dict[str, ReportSource]
+    evidence: tuple[ReportEvidence, ...]
+
+    def __init__(
+        self,
+        *,
+        composition: ReportComposition,
+        facts: dict[str, ReportFact],
+        sources: dict[str, ReportSource],
+        evidence: tuple[ReportEvidence, ...],
+    ) -> None:
+        super().__init__(composition=composition, facts=facts, sources=sources, evidence=evidence)
+        self.composition = composition
+        self.facts = facts
+        self.sources = sources
+        self.evidence = evidence
 
 
 class ReportPublisher:
